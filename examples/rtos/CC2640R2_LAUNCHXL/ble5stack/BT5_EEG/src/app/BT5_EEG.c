@@ -79,6 +79,7 @@
 #include <board.h>
 
 #include "BT5_EEG.h"
+#include "bq25895.h"
 
 #ifdef PTM_MODE
 #include "npi_task.h"              // To allow RX event registration
@@ -612,9 +613,9 @@ static void BT5_EEG_init(void)
   // http://software-dl.ti.com/lprf/ble5stack-latest/
   {
 
-    uint8_t batterylevelVal[EEG_BATTERY_LEVEL_LEN] = { 1 };
+    uint8_t batterylevelVal[EEG_BATTERY_LEVEL_LEN_MIN] = { };
 
-    EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN),
+    EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN_MIN),
 							batterylevelVal);
   }
 
@@ -664,7 +665,7 @@ static void BT5_EEG_init(void)
   // preprocessor definitions
   dispHandle = Display_open(Display_Type_ANY, NULL);
 
-
+  BQ25895_init();
 }
 
 /*********************************************************************
@@ -1321,6 +1322,16 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
  */
 static void BT5_EEG_performPeriodicTask(void)
 {
+    uint8_t valueToCopy;
+
+    valueToCopy= BQ25895_Getdata(BQ25895_Addr,BQ25895_REG03);
+
+
+    EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN_MIN),
+                            &valueToCopy);
+
+    Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "BATTERY: %2x", (uint16_t)valueToCopy);
+
 }
 
 #if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)

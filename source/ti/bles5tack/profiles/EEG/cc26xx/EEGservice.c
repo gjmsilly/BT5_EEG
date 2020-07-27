@@ -287,17 +287,28 @@ bStatus_t EEGservice_RegisterAppCBs( EEG_CBs_t *appCallbacks )
 bStatus_t EEGservice_SetParameter( uint8 param, uint8 len, void *value )
 {
   bStatus_t ret = SUCCESS;
+  uint8_t  *pAttrVal;
+  uint16_t *pValLen;
+  uint16_t valMinLen;
+  uint16_t valMaxLen;
+
   switch ( param )
   {
     case BATTERY_LEVEL_ID:
-      if ( len == BatterylevelValLen )
+        pAttrVal = BatterylevelVal;
+        valMinLen = EEG_BATTERY_LEVEL_LEN_MIN;
+        valMaxLen = EEG_BATTERY_LEVEL_LEN;
+        pValLen = &BatterylevelValLen;
+
+      if ( len <= valMaxLen && len >= valMinLen )
       {
-		    memcpy( BatterylevelVal, value, EEG_BATTERY_LEVEL_LEN );
-			
-			// Try to send notification
-			GATTServApp_ProcessCharCfg( BatterylevelConfig, BatterylevelVal, FALSE,
-			                            EEGservice_AttrTbl, GATT_NUM_ATTRS( EEGservice_AttrTbl ),
-			                            INVALID_TASK_ID, EEGservice_ReadAttrCB );
+		memcpy( pAttrVal, value, len );
+		*pValLen = len; // Update length for read and get.
+
+		// Try to send notification
+		GATTServApp_ProcessCharCfg( BatterylevelConfig, pAttrVal, FALSE,
+			                        EEGservice_AttrTbl, GATT_NUM_ATTRS( EEGservice_AttrTbl ),
+			                        INVALID_TASK_ID, EEGservice_ReadAttrCB );
       }
       else
       {
