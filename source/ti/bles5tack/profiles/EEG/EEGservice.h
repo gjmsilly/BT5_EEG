@@ -59,21 +59,20 @@ extern "C"
 /*********************************************************************
  * CONSTANTS
  */
+// EEG Service defines
+#define EEG_SERV_UUID                		0xFFF0  // UUID
 
-// Characteristic Parameters
-#define BATTERY_LEVEL         		  	    1  // RW uint8 - Profile Attribute value
-
-// Service UUIDs
-#define EEG_SERV_UUID                		0xFFF0
-
-// Characteristic UUIDs
+// Battery level Characteristic defines
+#define BATTERY_LEVEL_ID         		  	0  
 #define BATTERY_LEVEL_UUID		            0xFFF1
+#define EEG_BATTERY_LEVEL_LEN         	    50		// MAX Length of Characteristic in bytes
+#define EEG_BATTERY_LEVEL_LEN_MIN           1       // MIN Length of Characteristic in bytes
 
 // Proximity Profile Services bit fields
 #define EEG_SERVICE               			0x00000001
 
-// Length of Characteristic in bytes
-#define EEG_BATTERY_LEVEL_LEN         	    1
+
+
 
 /*********************************************************************
  * TYPEDEFS
@@ -93,7 +92,7 @@ typedef void (*EEG_charChange_t)( uint8 paramID );
 
 typedef struct
 {
-  EEG_charChange_t        pfnSimpleProfileChange;  // Called when characteristic value changes
+  EEG_charChange_t        pfnChangeCb;  // Called when characteristic value changes
 } EEG_CBs_t;
 
 
@@ -104,45 +103,45 @@ typedef struct
 
 
 /*
- * EEG_AddService- Initializes the EEG service by registering
- *          GATT attributes with the GATT server.
+ * EEGservice_AddService- Initializes the EEG service by registering
+ *         				  GATT attributes with the GATT server.
  *
  * @param   services - services to add. This is a bit map and can
  *                     contain more than one service.
  */
 
-extern bStatus_t EEG_AddService( uint32 services );
+extern bStatus_t EEGservice_AddService( uint32 services );
 
 /*
- * EEG_RegisterAppCBs - Registers the application callback function.
- *                    Only call this function once.
+ * EEGservice_RegisterAppCBs - Registers the application callback function.
+ *                             Only call this function once.
  *
  *    appCallbacks - pointer to application callbacks.
  */
-extern bStatus_t EEG_RegisterAppCBs( EEG_CBs_t *appCallbacks );
+extern bStatus_t EEGservice_RegisterAppCBs( EEG_CBs_t *appCallbacks );
 
-/*EEG_CBs_t
- * EEG_SetParameter - Set a EEG parameter.
+/*
+ * EEGservice_SetParameter - Set a EEG parameter.
  *
  *    param - Profile parameter ID
  *    len - length of data to right
  *    value - pointer to data to write.  This is dependent on
- *          the parameter ID and WILL be cast to the appropriate
- *          data type (example: data type of uint16 will be cast to
- *          uint16 pointer).
+ *        	  the parameter ID and WILL be cast to the appropriate
+ *        	  data type (example: data type of uint16 will be cast to
+ *        	  uint16 pointer).
  */
-extern bStatus_t EEG_SetParameter( uint8 param, uint8 len, void *value );
+extern bStatus_t EEGservice_SetParameter( uint8 param, uint8 len, void *value );
 
 /*
- * EEG_GetParameter - Get a EEG parameter.
+ * EEGservice_GetParameter - Get a EEG parameter.
  *
  *    param - Profile parameter ID
  *    value - pointer to data to write.  This is dependent on
- *          the parameter ID and WILL be cast to the appropriate
- *          data type (example: data type of uint16 will be cast to
- *          uint16 pointer).
+ *        	  the parameter ID and WILL be cast to the appropriate
+ *         	 data type (example: data type of uint16 will be cast to
+ *         	 uint16 pointer).
  */
-extern bStatus_t EEG_GetParameter( uint8 param, void *value );
+extern bStatus_t EEGservice_GetParameter( uint8 param, void *value );
 
 
 /*********************************************************************
@@ -152,4 +151,4 @@ extern bStatus_t EEG_GetParameter( uint8 param, void *value );
 }
 #endif
 
-#endif /* SIMPLEGATTPROFILE_H */
+#endif /*  EEGservice_H */

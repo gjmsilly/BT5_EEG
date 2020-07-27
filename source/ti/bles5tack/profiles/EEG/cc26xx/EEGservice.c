@@ -64,7 +64,7 @@
  * CONSTANTS
  */
 
-#define SERVAPP_NUM_ATTR_SUPPORTED        4
+#define SERVAPP_NUM_ATTR_SUPPORTED        5
 
 /*********************************************************************
  * TYPEDEFS
@@ -99,41 +99,45 @@ CONST uint8 BatterylevelUUID[ATT_BT_UUID_SIZE] =
  * LOCAL VARIABLES
  */
 
-static EEG_CBs_t *EEG_AppCBs = NULL;
+static EEG_CBs_t *PAppCBs = NULL;
 
 /*********************************************************************
  * Profile Attributes - variables
  */
 
-// EEG Service attribute
-static CONST gattAttrType_t EEGService = { ATT_BT_UUID_SIZE, EEGServUUID };
+// EEG Service declaration
+static CONST gattAttrType_t EEGServiceDecl = { ATT_BT_UUID_SIZE, EEGServUUID };
 
+// Characteristic "Battery level" Properties (for declaration)
+static uint8 BatterylevelProps = GATT_PROP_NOTIFY | GATT_PROP_READ | GATT_PROP_WRITE ;
 
-// BATTERY_LEVEL Properties
-static uint8 BatterylevelProps = GATT_PROP_READ | GATT_PROP_WRITE;
+// Characteristic "Battery level" Value variable
+static uint8 BatterylevelVal[EEG_BATTERY_LEVEL_LEN] = {};
 
-// BATTERY_LEVEL Value
-static uint8 Batterylevel[EEG_BATTERY_LEVEL_LEN] = {0};
+// Length of data in characteristic "Battery level" Value variable, initialized to minimal size.
+static uint16_t BatterylevelValLen = EEG_BATTERY_LEVEL_LEN_MIN;
 
-// BATTERY_LEVEL User Description
+// Characteristic "Battery level" User Description
 static uint8 BatterylevelUserDesp[12] = "Batterylevel";
 
+// Characteristic "Battery level" Client Characteristic Configuration Descriptor
+static gattCharCfg_t *BatterylevelConfig;
 
 /*********************************************************************
  * Profile Attributes - Table
  */
 
-static gattAttribute_t EEGAttrTbl[SERVAPP_NUM_ATTR_SUPPORTED] =
+static gattAttribute_t EEGservice_AttrTbl[SERVAPP_NUM_ATTR_SUPPORTED] =
 {
   // EEG Service
   {
     { ATT_BT_UUID_SIZE, primaryServiceUUID }, /* type */
     GATT_PERMIT_READ,                         /* permissions */
     0,                                        /* handle */
-    (uint8 *)&EEGService           			 /* pValue */
+    (uint8 *)&EEGServiceDecl           		  /* pValue */
   },
 
-    // BATTERY_LEVEL Declaration
+    // Characteristic "Battery level" Declaration
     {
       { ATT_BT_UUID_SIZE, characterUUID },
       GATT_PERMIT_READ,
@@ -141,36 +145,43 @@ static gattAttribute_t EEGAttrTbl[SERVAPP_NUM_ATTR_SUPPORTED] =
       &BatterylevelProps
     },
 
-      // BATTERY_LEVEL Value
+      // Characteristic "Battery level" Value
       {
         { ATT_BT_UUID_SIZE, BatterylevelUUID },
         GATT_PERMIT_READ | GATT_PERMIT_WRITE,
         0,
-        &Batterylevel
+        BatterylevelVal
       },
 
-      // BATTERY_LEVEL User Description
+      // Characteristic "Battery level" User Description
       {
         { ATT_BT_UUID_SIZE, charUserDescUUID },
         GATT_PERMIT_READ,
         0,
         BatterylevelUserDesp
       },
-
+	  
+      // Characteristic "Battery level" CCCD
+      {
+        { ATT_BT_UUID_SIZE, clientCharCfgUUID },
+        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
+        0,
+        (uint8_t *)&BatterylevelConfig
+      },
 };
 
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-static bStatus_t EEG_ReadAttrCB	(uint16_t connHandle,
-                                 gattAttribute_t *pAttr,
-                                 uint8_t *pValue, uint16_t *pLen,
-                                 uint16_t offset, uint16_t maxLen,
-                                 uint8_t method);
-static bStatus_t EEG_WriteAttrCB(uint16_t connHandle,
-                                 gattAttribute_t *pAttr,
-                                 uint8_t *pValue, uint16_t len,
-                                 uint16_t offset, uint8_t method);
+static bStatus_t EEGservice_ReadAttrCB	(uint16_t connHandle,
+										 gattAttribute_t *pAttr,
+										 uint8_t *pValue, uint16_t *pLen,
+										 uint16_t offset, uint16_t maxLen,
+										 uint8_t method);
+static bStatus_t EEGservice_WriteAttrCB (uint16_t connHandle,
+										 gattAttribute_t *pAttr,
+										 uint8_t *pValue, uint16_t len,
+										 uint16_t offset, uint8_t method);
 
 /*********************************************************************
  * PROFILE CALLBACKS
@@ -184,11 +195,11 @@ static bStatus_t EEG_WriteAttrCB(uint16_t connHandle,
 // pfnAuthorizeAttrCB to check a client's authorization prior to calling
 // pfnReadAttrCB or pfnWriteAttrCB, so no checks for authorization need to be
 // made within these functions.
-CONST gattServiceCBs_t EEG_CBs =
+CONST gattServiceCBs_t EEGservice_CBs =
 {
-  EEG_ReadAttrCB, 			 // Read callback function pointer
-  EEG_WriteAttrCB,			 // Write callback function pointer
-  NULL                       // Authorization callback function pointer
+  EEGservice_ReadAttrCB, 			 // Read callback function pointer
+  EEGservice_WriteAttrCB,			 // Write callback function pointer
+  NULL                      		 // Authorization callback function pointer
 };
 
 /*********************************************************************
@@ -196,7 +207,7 @@ CONST gattServiceCBs_t EEG_CBs =
  */
 
 /*********************************************************************
- * @fn      EEG_AddService
+ * @fn      EEGservice_AddService
  *
  * @brief   Initializes the EEG service by registering
  *          GATT attributes with the GATT server.
@@ -206,28 +217,26 @@ CONST gattServiceCBs_t EEG_CBs =
  *
  * @return  Success or Failure
  */
-bStatus_t EEG_AddService( uint32 services )
+bStatus_t EEGservice_AddService( uint32 services )
 {
   uint8 status;
 
-/*   // Allocate Client Characteristic Configuration table
-  simpleProfileChar4Config = (gattCharCfg_t *)ICall_malloc( sizeof(gattCharCfg_t) *
-                                                            MAX_NUM_BLE_CONNS );
-  if ( simpleProfileChar4Config == NULL )
+   // Allocate Client Characteristic Configuration table
+  BatterylevelConfig = (gattCharCfg_t *)ICall_malloc( sizeof(gattCharCfg_t) * linkDBNumConns );
+  if ( BatterylevelConfig == NULL )
   {
     return ( bleMemAllocError );
   }
-
   // Initialize Client Characteristic Configuration attributes
-  GATTServApp_InitCharCfg( CONNHANDLE_INVALID, simpleProfileChar4Config ); */
+  GATTServApp_InitCharCfg( CONNHANDLE_INVALID, BatterylevelConfig ); 
 
   if ( services & EEG_SERVICE )
   {
     // Register GATT attribute list and CBs with GATT Server App
-    status = GATTServApp_RegisterService( EEGAttrTbl,
-                                          GATT_NUM_ATTRS( EEGAttrTbl ),
+    status = GATTServApp_RegisterService( EEGservice_AttrTbl,
+                                          GATT_NUM_ATTRS( EEGservice_AttrTbl ),
                                           GATT_MAX_ENCRYPT_KEY_SIZE,
-                                          &EEG_CBs );
+                                          &EEGservice_CBs );
   }
   else
   {
@@ -238,7 +247,7 @@ bStatus_t EEG_AddService( uint32 services )
 }
 
 /*********************************************************************
- * @fn      EEG_RegisterAppCBs
+ * @fn      EEGservice_RegisterAppCBs
  *
  * @brief   Registers the application callback function. Only call
  *          this function once.
@@ -247,11 +256,11 @@ bStatus_t EEG_AddService( uint32 services )
  *
  * @return  SUCCESS or bleAlreadyInRequestedMode
  */
-bStatus_t EEG_RegisterAppCBs( EEG_CBs_t *appCallbacks )
+bStatus_t EEGservice_RegisterAppCBs( EEG_CBs_t *appCallbacks )
 {
   if ( appCallbacks )
   {
-    EEG_AppCBs = appCallbacks;
+    PAppCBs = appCallbacks;
 
     return ( SUCCESS );
   }
@@ -262,9 +271,9 @@ bStatus_t EEG_RegisterAppCBs( EEG_CBs_t *appCallbacks )
 }
 
 /*********************************************************************
- * @fn      EEG_SetParameter
+ * @fn      EEGservice_SetParameter
  *
- * @brief   Set a EEG parameter.
+ * @brief   Set a EEG service parameter.
  *
  * @param   param - Profile parameter ID
  * @param   len - length of data to write
@@ -275,38 +284,26 @@ bStatus_t EEG_RegisterAppCBs( EEG_CBs_t *appCallbacks )
  *
  * @return  bStatus_t
  */
-bStatus_t EEG_SetParameter( uint8 param, uint8 len, void *value )
+bStatus_t EEGservice_SetParameter( uint8 param, uint8 len, void *value )
 {
   bStatus_t ret = SUCCESS;
   switch ( param )
   {
-    case BATTERY_LEVEL:
-      if ( len == EEG_BATTERY_LEVEL_LEN )
+    case BATTERY_LEVEL_ID:
+      if ( len == BatterylevelValLen )
       {
-		    memcpy( Batterylevel, value, EEG_BATTERY_LEVEL_LEN );
+		    memcpy( BatterylevelVal, value, EEG_BATTERY_LEVEL_LEN );
+			
+			// Try to send notification
+			GATTServApp_ProcessCharCfg( BatterylevelConfig, BatterylevelVal, FALSE,
+			                            EEGservice_AttrTbl, GATT_NUM_ATTRS( EEGservice_AttrTbl ),
+			                            INVALID_TASK_ID, EEGservice_ReadAttrCB );
       }
       else
       {
         ret = bleInvalidRange;
       }
       break;
-
-
-/*     case SIMPLEPROFILE_CHAR4:
-      if ( len == sizeof ( uint8 ) )
-      {
-        simpleProfileChar4 = *((uint8*)value);
-
-        // See if Notification has been enabled
-        GATTServApp_ProcessCharCfg( simpleProfileChar4Config, &simpleProfileChar4, FALSE,
-                                    simpleProfileAttrTbl, GATT_NUM_ATTRS( simpleProfileAttrTbl ),
-                                    INVALID_TASK_ID, simpleProfile_ReadAttrCB );
-      }
-      else
-      {
-        ret = bleInvalidRange;
-      }
-      break; */
 
     default:
       ret = INVALIDPARAMETER;
@@ -317,9 +314,9 @@ bStatus_t EEG_SetParameter( uint8 param, uint8 len, void *value )
 }
 
 /*********************************************************************
- * @fn      EEG_GetParameter
+ * @fn      EEGservice_GetParameter
  *
- * @brief   Get a EEG parameter.
+ * @brief   Get a EEG service parameter.
  *
  * @param   param - Profile parameter ID
  * @param   value - pointer to data to put.  This is dependent on
@@ -329,13 +326,13 @@ bStatus_t EEG_SetParameter( uint8 param, uint8 len, void *value )
  *
  * @return  bStatus_t
  */
-bStatus_t EEG_GetParameter( uint8 param, void *value )
+bStatus_t EEGservice_GetParameter( uint8 param, void *value )
 {
   bStatus_t ret = SUCCESS;
   switch ( param )
   {
-    case BATTERY_LEVEL:
-	  memcpy( value, Batterylevel, EEG_BATTERY_LEVEL_LEN );
+    case BATTERY_LEVEL_ID:
+	  memcpy( value, BatterylevelVal, BatterylevelValLen );
       break;
 	  
     default:
@@ -347,7 +344,7 @@ bStatus_t EEG_GetParameter( uint8 param, void *value )
 }
 
 /*********************************************************************
- * @fn          EEG_ReadAttrCB
+ * @fn          EEGservice_ReadAttrCB
  *
  * @brief       Read an attribute.
  *
@@ -361,11 +358,11 @@ bStatus_t EEG_GetParameter( uint8 param, void *value )
  *
  * @return      SUCCESS, blePending or Failure
  */
-static bStatus_t EEG_ReadAttrCB(uint16_t connHandle,
-                                gattAttribute_t *pAttr,
-                                uint8_t *pValue, uint16_t *pLen,
-                                uint16_t offset, uint16_t maxLen,
-                                uint8_t method)
+static bStatus_t EEGservice_ReadAttrCB (uint16_t connHandle,
+									    gattAttribute_t *pAttr,
+										uint8_t *pValue, uint16_t *pLen,
+										uint16_t offset, uint16_t maxLen,
+										uint8_t method)
 {
   bStatus_t status = SUCCESS;
 
@@ -385,8 +382,8 @@ static bStatus_t EEG_ReadAttrCB(uint16_t connHandle,
       // gattserverapp handles those reads
 
       case BATTERY_LEVEL_UUID:
-        *pLen = EEG_BATTERY_LEVEL_LEN;
-        VOID memcpy( pValue, pAttr->pValue, EEG_BATTERY_LEVEL_LEN );
+        *pLen = BatterylevelValLen;
+        memcpy( pValue, pAttr->pValue, BatterylevelValLen );
         break;
 
       default:
@@ -407,7 +404,7 @@ static bStatus_t EEG_ReadAttrCB(uint16_t connHandle,
 }
 
 /*********************************************************************
- * @fn      EEG_WriteAttrCB
+ * @fn      EEGservice_WriteAttrCB
  *
  * @brief   Validate attribute data prior to a write operation
  *
@@ -420,13 +417,16 @@ static bStatus_t EEG_ReadAttrCB(uint16_t connHandle,
  *
  * @return  SUCCESS, blePending or Failure
  */
-static bStatus_t EEG_WriteAttrCB(uint16_t connHandle,
-                                 gattAttribute_t *pAttr,
-                                 uint8_t *pValue, uint16_t len,
-                                 uint16_t offset, uint8_t method)
+static bStatus_t EEGservice_WriteAttrCB(uint16_t connHandle,
+										gattAttribute_t *pAttr,
+										uint8_t *pValue, uint16_t len,
+										uint16_t offset, uint8_t method)
 {
   bStatus_t status = SUCCESS;
   uint8 notifyApp = 0xFF;
+  uint16_t writeLenMin;
+  uint16_t writeLenMax;
+  uint16_t *pValueLenVar;
 
   if ( pAttr->type.len == ATT_BT_UUID_SIZE )
   {
@@ -436,36 +436,50 @@ static bStatus_t EEG_WriteAttrCB(uint16_t connHandle,
     {
       case BATTERY_LEVEL_UUID:
 
-        //Validate the value
-        // Make sure it's not a blob oper
-        if ( offset == 0 )
-        {
-          if ( len != 1 )
+          writeLenMin  = EEG_BATTERY_LEVEL_LEN_MIN;     // MIN Length of Characteristic
+          writeLenMax  = EEG_BATTERY_LEVEL_LEN;         // MAX Length of Characteristic in bytes
+          pValueLenVar = &BatterylevelValLen;           // Current Length of Characteristic in bytes
+
+          // Check whether the length is within bounds.
+          if ( offset >= writeLenMax )
+          {
+            status = ATT_ERR_INVALID_OFFSET;
+          }
+          else if ( offset + len > writeLenMax )
           {
             status = ATT_ERR_INVALID_VALUE_SIZE;
           }
-        }
-        else
-        {
-          status = ATT_ERR_ATTR_NOT_LONG;
-        }
+          else if ( offset + len < writeLenMin && ( method == ATT_EXECUTE_WRITE_REQ || method == ATT_WRITE_REQ ) )
+          {
+            status = ATT_ERR_INVALID_VALUE_SIZE;
+          }
 
-        //Write the value
-        if ( status == SUCCESS )
+        // Write the value
+          else
         {
-          uint8 *pCurValue = (uint8 *)pAttr->pValue;
-          *pCurValue = pValue[0];
+	       // Copy pValue into the variable we point to from the attribute table.
+		   memcpy(pAttr->pValue + offset, pValue, len);
+		   
+		   // Only notify application and update length if enough data is written.
+		   // Note: If reliable writes are used (meaning several attributes are written to using ATT PrepareWrite),
+		   //       the application will get a callback for every write with an offset + len larger than EEG_BATTERY_LEVEL_LEN.
+		   // Note: For Long Writes (ATT Prepare + Execute towards only one attribute) only one callback will be issued,
+           //       because the write fragments are concatenated before being sent here.
+			
+			if ( offset + len >= writeLenMin )
+		   {
+				notifyApp = BATTERY_LEVEL_ID;
+				*pValueLenVar = offset + len; // Update data length.
+			}
 
-          if( pAttr->pValue == Batterylevel )
-            notifyApp = BATTERY_LEVEL;
         }
 
         break;
 
-//      case GATT_CLIENT_CHAR_CFG_UUID:
-//        status = GATTServApp_ProcessCCCWriteReq( connHandle, pAttr, pValue, len,
-//                                                 offset, GATT_CLIENT_CFG_NOTIFY );
-//        break;
+     case GATT_CLIENT_CHAR_CFG_UUID: // Request is regarding a Client Characterisic Configuration
+		  status = GATTServApp_ProcessCCCWriteReq( connHandle, pAttr, pValue, len,
+                                                   offset, GATT_CLIENT_CFG_NOTIFY );
+        break;
 
       default:
         // Should never get here! (characteristics 2 and 4 do not have write permissions)
@@ -480,9 +494,9 @@ static bStatus_t EEG_WriteAttrCB(uint16_t connHandle,
   }
 
   // If a characteristic value changed then callback function to notify application of change
-  if ( (notifyApp != 0xFF ) && EEG_AppCBs && EEG_AppCBs->pfnSimpleProfileChange )
+  if ( (notifyApp != 0xFF ) && PAppCBs && PAppCBs->pfnChangeCb )
   {
-      EEG_AppCBs->pfnSimpleProfileChange( notifyApp );
+      PAppCBs->pfnChangeCb( notifyApp );
   }
 
   return ( status );

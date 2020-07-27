@@ -437,10 +437,10 @@ static gapBondCBs_t BT5_EEG_BondMgrCBs =
 };
 #endif
 
-// BT5_EEG EEG SERVICE Callbacks
+// EEG service Callbacks
 static EEG_CBs_t BT5_EEG_EEGServCBs =
 {
-  BT5_EEG_charValueChangeCB // EEG SERVICE Characteristic value change callback
+  .pfnChangeCb = BT5_EEG_charValueChangeCB  // EEG service Characteristic value change callback
 };
 
 /*********************************************************************
@@ -605,21 +605,21 @@ static void BT5_EEG_init(void)
   GGS_AddService(GATT_ALL_SERVICES);           // GAP GATT Service
   GATTServApp_AddService(GATT_ALL_SERVICES);   // GATT Service
   DevInfo_AddService();                        // Device Information Service
-  EEG_AddService(GATT_ALL_SERVICES); 		   // EEG Service
+  EEGservice_AddService(GATT_ALL_SERVICES); 		   // EEG Service
 
   // Setup the EEG Service Characteristic Values
   // For more information, see the GATT and GATTServApp sections in the User's Guide:
   // http://software-dl.ti.com/lprf/ble5stack-latest/
   {
 
-    uint8_t batterylevel[EEG_BATTERY_LEVEL_LEN] = { 1 };
+    uint8_t batterylevelVal[EEG_BATTERY_LEVEL_LEN] = { 1 };
 
-    EEG_SetParameter(BATTERY_LEVEL, sizeof(EEG_BATTERY_LEVEL_LEN),
-                     batterylevel);
+    EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN),
+							batterylevelVal);
   }
 
   // Register callback with EEG SERVICE
-  EEG_RegisterAppCBs(&BT5_EEG_EEGServCBs);
+  EEGservice_RegisterAppCBs(&BT5_EEG_EEGServCBs);
 
 #if defined(GAP_BOND_MGR)
   // Start Bond Manager and register callback
@@ -1294,8 +1294,8 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
 
   switch(paramId)
   {
-    case BATTERY_LEVEL:
-      EEG_GetParameter(BATTERY_LEVEL, &newValue);
+    case BATTERY_LEVEL_ID:
+      EEGservice_GetParameter(BATTERY_LEVEL_ID, &newValue);
 
       Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "BATTERY: %d", (uint16_t)newValue);
       break;
