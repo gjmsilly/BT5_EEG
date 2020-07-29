@@ -38,7 +38,7 @@ sdk安装至默认路径下`C:\ti\simplelink_cc2640r2_sdk_4_20_00_04`。
    `Project` -> `import CCS projects` -> `.\examples\rtos\CC2640R2_LAUNCHXL\ble5stack\BT5_EEG`
 ![](https://github.com/gjmsilly/BT5_EEG/blob/master/imgs/import_ccs_project.png) 
 
-4. 添加外设文件`bq25895.c` `bq25895.h`
+4. 添加外设文件`bq25895.c` `bq25895.h` 至工程application文件夹，并将shell文件夹复制到工程目录下。
 
 ## 更新日志
 - 2020/7/25   v1.0
@@ -51,4 +51,10 @@ sdk安装至默认路径下`C:\ti\simplelink_cc2640r2_sdk_4_20_00_04`。
   - 规范变量名称，service后缀标识服务，BT5_EEG前缀标识应用。
   - 修改特性 batterylevel，支持不定长字节读写，支持notify。
   - 添加bq25895读写程序。
+
+- 2020/7/29   v1.2
+
+  - 添加shell任务线程，修改BT5_EEG线程优先级至shell线程之上。
+  - 删除display驱动，采用uart写函数输出，关闭所有输出调试信息（待优化）。
+  
   

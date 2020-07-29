@@ -109,7 +109,7 @@ static EEG_CBs_t *PAppCBs = NULL;
 static CONST gattAttrType_t EEGServiceDecl = { ATT_BT_UUID_SIZE, EEGServUUID };
 
 // Characteristic "Battery level" Properties (for declaration)
-static uint8 BatterylevelProps = GATT_PROP_NOTIFY | GATT_PROP_READ | GATT_PROP_WRITE ;
+static uint8 BatterylevelProps = GATT_PROP_NOTIFY | GATT_PROP_WRITE ;
 
 // Characteristic "Battery level" Value variable
 static uint8 BatterylevelVal[EEG_BATTERY_LEVEL_LEN] = {};
@@ -148,7 +148,7 @@ static gattAttribute_t EEGservice_AttrTbl[SERVAPP_NUM_ATTR_SUPPORTED] =
       // Characteristic "Battery level" Value
       {
         { ATT_BT_UUID_SIZE, BatterylevelUUID },
-        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
+         GATT_PERMIT_WRITE,
         0,
         BatterylevelVal
       },

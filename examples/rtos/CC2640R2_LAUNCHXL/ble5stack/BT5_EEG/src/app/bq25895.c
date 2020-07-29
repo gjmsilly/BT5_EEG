@@ -21,7 +21,6 @@
 #include <ti/drivers/i2c/I2CCC26XX.h>
 #include <ti/devices/cc26x0r2/driverlib/i2c.h>
 
-static I2C_Handle      i2c;
 static I2C_Params      i2cParams;
 
 /*
@@ -36,7 +35,7 @@ void BQ25895_init( )
     I2C_Params_init(&i2cParams); //  I2C_MODE_BLOCKING
     i2cParams.bitRate = I2C_400kHz;
 
-    i2c = I2C_open(Board_I2C0, &i2cParams);
+    I2C_open(Board_I2C0, &i2cParams);
 }
 
 /*
@@ -49,6 +48,7 @@ void BQ25895_init( )
  */
 uint8_t BQ25895_Getdata( uint8_t slaveAddr, uint8_t regAddr )
 {
+
     uint8_t data;
 
     /* Step1 set slave address to send */
