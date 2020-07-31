@@ -60,7 +60,6 @@
 
 #include "BT5_EEG.h"
 #include <shell/shell.h>
-#include <shell/shell_port.h>
 
 #ifdef PTM_MODE
 #include "npi_task.h"
