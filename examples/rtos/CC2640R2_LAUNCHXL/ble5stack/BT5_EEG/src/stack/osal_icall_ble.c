@@ -52,7 +52,7 @@
 #include "hal_mcu.h"
 #include "osal.h"
 #include "osal_tasks.h"
-#include "osal_snv.h"
+//#include "osal_snv.h"
 
 
 /* LL */
@@ -80,7 +80,7 @@
 
 #include "gattservapp.h"
 
-#include "gapbondmgr.h"
+//#include "gapbondmgr.h"
 
 #include "ble_user_config.h"
 #include "ble_dispatch.h"
@@ -252,7 +252,7 @@ int stack_main( void *arg )
 #endif  /* ICALL_LITE */
 
   // Initialize NV System
-  osal_snv_init( );
+  //osal_snv_init( );
 
   // Initialize the operating system
   osal_init_system();

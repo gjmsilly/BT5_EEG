@@ -63,6 +63,8 @@ extern "C" {
 #define Board_PIN_GLED          CC2640R2F_EEG_PIN_GLED
 
 #define Board_SPI0              CC2640R2F_EEG_SPI0
+#define Board_SPI1              CC2640R2F_EEG_SPI1
+#define Board_SPI_MASTER        CC2640R2F_EEG_SPI1
 
 #define Board_UART0             CC2640R2F_EEG_UART0
 

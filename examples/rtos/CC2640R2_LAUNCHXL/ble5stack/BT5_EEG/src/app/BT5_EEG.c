@@ -50,37 +50,36 @@
  */
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include <ti/sysbios/knl/Task.h>
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/knl/Event.h>
 #include <ti/sysbios/knl/Queue.h>
-
+#include <ti/drivers/utils/List.h>
 
 #if !(defined __TI_COMPILER_VERSION__)
 #include <intrinsics.h>
 #endif
 
-#include <ti/drivers/utils/List.h>
-
 #include <icall.h>
-#include "util.h"
+#include <util.h>
 #include <bcomdef.h>
 /* This Header file contains all BLE API and icall structure definition */
 #include <icall_ble_api.h>
 
+/* Bluetooth Profiles */
 #include <devinfoservice.h>
 #include <EEGservice.h>
+
+/* Application specific includes */
+#include <Board.h>
+#include <BT5_EEG.h>
 
 #ifdef USE_RCOSC
 #include <rcosc_calibration.h>
 #endif //USE_RCOSC
 
-#include <board.h>
-
-#include "BT5_EEG.h"
-#include "bq25895.h"
-#include <ti/drivers/UART.h>
 #ifdef PTM_MODE
 #include "npi_task.h"              // To allow RX event registration
 #include "npi_ble.h"               // To enable transmission of messages to UART
@@ -105,10 +104,10 @@
 #define DEFAULT_DISCOVERABLE_MODE             GAP_ADTYPE_FLAGS_GENERAL
 
 // Minimum connection interval (units of 1.25ms, 80=100ms) for parameter update request
-#define DEFAULT_DESIRED_MIN_CONN_INTERVAL     80
+#define DEFAULT_DESIRED_MIN_CONN_INTERVAL     120
 
 // Maximum connection interval (units of 1.25ms, 104=130ms) for  parameter update request
-#define DEFAULT_DESIRED_MAX_CONN_INTERVAL     104
+#define DEFAULT_DESIRED_MAX_CONN_INTERVAL     160
 
 // Slave latency to use for parameter update request
 #define DEFAULT_DESIRED_SLAVE_LATENCY         0
@@ -129,7 +128,7 @@
 #define EEG_SEND_PARAM_UPDATE_DELAY           6000
 
 // Task configuration
-#define EEG_TASK_PRIORITY                     2
+#define EEG_TASK_PRIORITY                     1
 
 #ifndef EEG_TASK_STACK_SIZE
 #define EEG_TASK_STACK_SIZE                   644
@@ -139,8 +138,10 @@
 #define EEG_STATE_CHANGE_EVT                  0     // 连接状态
 #define EEG_CHAR_CHANGE_EVT                   1     // 特征值变化
 #define EEG_ADV_EVT                           2     // 广播
+#if defined(GAP_BOND_MGR)
 #define EEG_PAIR_STATE_EVT                    3     // 配对
 #define EEG_PASSCODE_EVT                      4     // 密钥
+#endif
 #define EEG_PERIODIC_EVT                      5     // 定时
 #define EEG_READ_RPA_EVT                      6     // 私人地址连接
 #define EEG_SEND_PARAM_UPDATE_EVT             7     // 参数更新
@@ -157,27 +158,16 @@
 // Size of string-converted device address ("0xXXXXXXXXXXXX")
 #define EEG_ADDR_STR_SIZE     15
 
-// Row numbers for menu
-#define EEG_ROW_SEPARATOR_1    0
-#define EEG_ROW_STATUS_1       1
-#define EEG_ROW_STATUS_2       2
-#define EEG_ROW_CONNECTION     3
-#define EEG_ROW_ADVSTATE       4
-#define EEG_ROW_RSSI           5
-#define EEG_ROW_IDA            6
-#define EEG_ROW_RPA            7
-#define EEG_ROW_DEBUG          8
-
 // For storing the active connections
-#define EEG_RSSI_TRACK_CHNLS        1            // Max possible channels can be GAP_BONDINGS_MAX
-#define EEG_MAX_RSSI_STORE_DEPTH    5
-#define EEG_INVALID_HANDLE          0xFFFF
-#define RSSI_2M_THRSHLD          	 -30
-#define RSSI_1M_THRSHLD          	 -40
-#define RSSI_S2_THRSHLD          	 -50
-#define RSSI_S8_THRSHLD          	 -60
-#define EEG_PHY_NONE                LL_PHY_NONE  // No PHY set
-#define AUTO_PHY_UPDATE             0xFF
+#define EEG_RSSI_TRACK_CHNLS                 1            // Max possible channels can be GAP_BONDINGS_MAX
+#define EEG_MAX_RSSI_STORE_DEPTH             5
+#define EEG_INVALID_HANDLE                   0xFFFF
+#define RSSI_2M_THRSHLD                      -30
+#define RSSI_1M_THRSHLD                      -40
+#define RSSI_S2_THRSHLD                      -50
+#define RSSI_S8_THRSHLD                      -60
+#define EEG_PHY_NONE                         LL_PHY_NONE  // No PHY set
+#define AUTO_PHY_UPDATE                      0xFF
 
 // Spin if the expression is not true
 #define BT5_EEG_ASSERT(expr) if (!(expr)) BT5_EEG_spin();
@@ -243,25 +233,22 @@ typedef struct
 // Connected device information
 typedef struct
 {
-  uint16_t         	    connHandle;                        // Connection Handle
+  uint16_t              connHandle;                        // Connection Handle
   ClockEventData_t*     pParamUpdateEventData;
-  Clock_Struct*    	    pUpdateClock;                      // pointer to clock struct
-  int8_t           	    rssiArr[EEG_MAX_RSSI_STORE_DEPTH];
-  uint8_t          	    rssiCntr;
-  int8_t           	    rssiAvg;
-  bool             	    phyCngRq;                          // Set to true if PHY change request is in progress
-  uint8_t          	    currPhy;
-  uint8_t          	    rqPhy;
-  uint8_t          	    phyRqFailCnt;                      // PHY change request count
-  bool             	    isAutoPHYEnable;                   // Flag to indicate auto phy change
+  Clock_Struct*         pUpdateClock;                      // pointer to clock struct
+  int8_t                rssiArr[EEG_MAX_RSSI_STORE_DEPTH];
+  uint8_t               rssiCntr;
+  int8_t                rssiAvg;
+  bool                  phyCngRq;                          // Set to true if PHY change request is in progress
+  uint8_t               currPhy;
+  uint8_t               rqPhy;
+  uint8_t               phyRqFailCnt;                      // PHY change request count
+  bool                  isAutoPHYEnable;                   // Flag to indicate auto phy change
 } ConnRec_t;
 
 /*********************************************************************
  * GLOBAL VARIABLES
  */
-
-// Display Interface
-//Display_Handle dispHandle = NULL;
 
 // Task configuration
 Task_Struct EEGTask;
@@ -361,7 +348,6 @@ static uint8_t scanRspData[] =
 
 // Advertising handles
 static uint8 advHandleLegacy;
-static uint8 advHandleLongRange;
 
 // Address mode
 static GAP_Addr_Modes_t addrMode = DEFAULT_ADDRESS_MODE;
@@ -395,9 +381,9 @@ static void BT5_EEG_passcodeCb(uint8_t *pDeviceAddr, uint16_t connHandle,
                                         uint32_t numComparison);
 static void BT5_EEG_pairStateCb(uint16_t connHandle, uint8_t state,
                                          uint8_t status);
-#endif
 static void BT5_EEG_processPairState(PairStateData_t *pPairState);
 static void BT5_EEG_processPasscode(PasscodeData_t *pPasscodeData);
+#endif
 static void BT5_EEG_charValueChangeCB(uint8_t paramId);
 static status_t BT5_EEG_enqueueMsg(uint8_t event, void *pData);
 static void BT5_EEG_processCmdCompleteEvt(hciEvt_CmdComplete_t *pMsg);
@@ -423,7 +409,7 @@ static void BT5_EEG_sendToNPI(uint8_t *buf, uint16_t len);  // Declaration
 /*********************************************************************
  * EXTERN FUNCTIONS
  */
-//extern void (uint8 assertCause, uint8 assertSubcause);
+extern void AssertHandler (uint8 assertCause, uint8 assertSubcause);
 
 /*********************************************************************
  * PROFILE CALLBACKS/SERVICE CALLBACKS 
@@ -584,13 +570,13 @@ static void BT5_EEG_init(void)
   {
     // Don't send a pairing request after connecting; the peer device must
     // initiate pairing
-    uint8_t pairMode = GAPBOND_PAIRING_MODE_WAIT_FOR_REQ;
+    uint8_t pairMode = GAPBOND_PAIRING_MODE_NO_PAIRING ;
     // Use authenticated pairing: require passcode.
     uint8_t mitm = TRUE;
     // This device only has display capabilities. Therefore, it will display the
     // passcode during pairing. However, since the default passcode is being
     // used, there is no need to display anything.
-    uint8_t ioCap = GAPBOND_IO_CAP_DISPLAY_ONLY;
+    uint8_t ioCap = GAPBOND_IO_CAP_NO_INPUT_NO_OUTPUT;
     // Request bonding (storing long-term keys for re-encryption upon subsequent
     // connections without repairing)
     uint8_t bonding = TRUE;
@@ -616,7 +602,7 @@ static void BT5_EEG_init(void)
     uint8_t batterylevelVal[EEG_BATTERY_LEVEL_LEN_MIN] = {1};
 
     EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN_MIN),
-							batterylevelVal);
+                            batterylevelVal);
   }
 
   // Register callback with EEG SERVICE
@@ -790,13 +776,11 @@ static uint8_t BT5_EEG_processStackMsg(ICall_Hdr *pMsg)
             {
               if (pMyMsg->cmdStatus == HCI_ERROR_CODE_UNSUPPORTED_REMOTE_FEATURE)
               {
-              //  Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, \
-                        "PHY Change failure, peer does not support this");
+              System_printf("PHY Change failure, peer does not support this\r\n");
               }
               else
               {
-             //   Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, \
-                               "PHY Update Status Event: 0x%x",    \
+              System_printf("PHY Update Status Event: 0x%x\r\n", \
                                pMyMsg->cmdStatus);
               }
 
@@ -821,18 +805,16 @@ static uint8_t BT5_EEG_processStackMsg(ICall_Hdr *pMsg)
           {
             if (pPUC->status != SUCCESS)
             {
-         ///     Display_printf(dispHandle, EEG_ROW_STATUS_1, 0,    \
-                             "PHY Change failure");
+              System_printf("PHY Change failure\r\n");
             }
             else
             {
               // Only symmetrical PHY is supported.
               // rxPhy should be equal to txPhy.
-         //     Display_printf(dispHandle, EEG_ROW_STATUS_2, 0, \
-                             "PHY Updated to %s",               \
-                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_1M) ? "1M" : \
-                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_2M) ? "2M" : \
-                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_CODED) ? "CODED" : "Unexpected PHY Value");
+                System_printf("PHY Updated to %s",                                  \
+                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_1M) ? "1M\r\n" : \
+                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_2M) ? "2M\r\n" : \
+                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_CODED) ? "CODED" : "Unexpected PHY Value\r\n");
             }
 
             BT5_EEG_updatePHYStat(HCI_BLE_PHY_UPDATE_COMPLETE_EVENT, (uint8_t *)pMsg);
@@ -910,12 +892,12 @@ static uint8_t BT5_EEG_processGATTMsg(gattMsgEvent_t *pMsg)
     // The app is informed in case it wants to drop the connection.
 
     // Display the opcode of the message that caused the violation.
-  //  Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "FC Violated: %d", pMsg->msg.flowCtrlEvt.opcode);
+      System_printf( "FC Violated: %d\r\n", pMsg->msg.flowCtrlEvt.opcode);
   }
   else if (pMsg->method == ATT_MTU_UPDATED_EVENT)
   {
     // MTU size updated
-  //  Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "MTU Size: %d", pMsg->msg.mtuEvt.MTU);
+      System_printf("MTU Size: %d\r\n", pMsg->msg.mtuEvt.MTU);
   }
 
   // Free message payload. Needed only for ATT Protocol messages
@@ -947,7 +929,7 @@ static void BT5_EEG_processAppMsg(Evt_t *pMsg)
     case EEG_ADV_EVT:
       BT5_EEG_processAdvEvent((GapAdvEventData_t*)(pMsg->pData));
       break;
-
+#if defined(GAP_BOND_MGR)
     case EEG_PAIR_STATE_EVT:
       BT5_EEG_processPairState((PairStateData_t*)(pMsg->pData));
       break;
@@ -955,7 +937,7 @@ static void BT5_EEG_processAppMsg(Evt_t *pMsg)
     case EEG_PASSCODE_EVT:
       BT5_EEG_processPasscode((PasscodeData_t*)(pMsg->pData));
       break;
-
+#endif
     case EEG_PERIODIC_EVT:
       BT5_EEG_performPeriodicTask();
       break;
@@ -1033,7 +1015,7 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
         // Set Device Info Service Parameter
         DevInfo_SetParameter(DEVINFO_SYSTEM_ID, DEVINFO_SYSTEM_ID_LEN, systemId);
 
-     //   Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "Initialized");
+        System_printf("Initialized\r\n");
 
         // Setup and start Advertising
         // For more information, see the GAP section in the User's Guide:
@@ -1068,35 +1050,6 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
         status = GapAdv_enable(advHandleLegacy, GAP_ADV_ENABLE_OPTIONS_USE_MAX , 0);
         BT5_EEG_ASSERT(status == SUCCESS);
 
-        // Use long range params to create long range set #2
-        GapAdv_params_t advParamLongRange = GAPADV_PARAMS_AE_LONG_RANGE_CONN;
-
-        // Create Advertisement set #2 and assign handle
-        status = GapAdv_create(&BT5_EEG_advCallback, &advParamLongRange,
-                               &advHandleLongRange);
-        BT5_EEG_ASSERT(status == SUCCESS);
-
-        // Load advertising data for set #2 that is statically allocated by the app
-        status = GapAdv_loadByHandle(advHandleLongRange, GAP_ADV_DATA_TYPE_ADV,
-                                     sizeof(advertData), advertData);
-        BT5_EEG_ASSERT(status == SUCCESS);
-
-        // Set event mask for set #2
-        status = GapAdv_setEventMask(advHandleLongRange,
-                                     GAP_ADV_EVT_MASK_START_AFTER_ENABLE |
-                                     GAP_ADV_EVT_MASK_END_AFTER_DISABLE |
-                                     GAP_ADV_EVT_MASK_SET_TERMINATED);
-
-        // Enable long range advertising for set #2
-        status = GapAdv_enable(advHandleLongRange, GAP_ADV_ENABLE_OPTIONS_USE_MAX , 0);
-        BT5_EEG_ASSERT(status == SUCCESS);
-
-
-        // Display device address
-      //  Display_printf(dispHandle, EEG_ROW_IDA, 0, "%s Addr: %s", \
-                       (addrMode <= ADDRMODE_RANDOM) ? "Dev" : "ID",    \
-                       Util_convertBdAddr2Str(pPkt->devAddr));
-
 #if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)
         if (addrMode > ADDRMODE_RANDOM)
         {
@@ -1119,7 +1072,7 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 
       // Display the amount of current connections
       uint8_t numActive = linkDB_NumActive();
-      //Display_printf(dispHandle, EEG_ROW_STATUS_2, 0, "Num Conns: %d",    \
+      System_printf  ( "Num Conns: %d\r\n",    \
                      (uint16_t)numActive);
 
       if (pPkt->hdr.status == SUCCESS)
@@ -1128,7 +1081,7 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
         BT5_EEG_addConn(pPkt->connectionHandle);
 
         // Display the address of this connection
-        //Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "Connected to %s",    \
+        System_printf (  "Connected to %s\r\n",    \
                        Util_convertBdAddr2Str(pPkt->devAddr));
 
 
@@ -1140,12 +1093,10 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
       {
         // Start advertising since there is room for more connections
         GapAdv_enable(advHandleLegacy, GAP_ADV_ENABLE_OPTIONS_USE_MAX , 0);
-        GapAdv_enable(advHandleLongRange, GAP_ADV_ENABLE_OPTIONS_USE_MAX , 0);
       }
       else
       {
         // Stop advertising since there is no room for more connections
-        GapAdv_disable(advHandleLongRange);
         GapAdv_disable(advHandleLegacy);
       }
 
@@ -1158,9 +1109,9 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 
       // Display the amount of current connections
       uint8_t numActive = linkDB_NumActive();
-    //  Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "Device Disconnected!");
-    //  Display_printf(dispHandle, EEG_ROW_STATUS_2, 0, "Num Conns: %d",
-     //                (uint16_t)numActive);
+      System_printf ( "Device Disconnected!\r\n");
+      System_printf ( "Num Conns: %d \r\n", \
+                    (uint16_t)numActive);
 
       // Remove the connection from the list and disable RSSI if needed
       BT5_EEG_removeConn(pPkt->connectionHandle);
@@ -1175,10 +1126,6 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 
       // Start advertising since there is room for more connections
       GapAdv_enable(advHandleLegacy, GAP_ADV_ENABLE_OPTIONS_USE_MAX , 0);
-      GapAdv_enable(advHandleLongRange, GAP_ADV_ENABLE_OPTIONS_USE_MAX , 0);
-
-      // Clear remaining lines
-     // Display_clearLine(dispHandle, EEG_ROW_CONNECTION);
 
       break;
     }
@@ -1223,15 +1170,14 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
       if(pPkt->status == SUCCESS)
       {
         // Display the address of the connection update
-//        Display_printf(dispHandle, EEG_ROW_STATUS_2, 0, "Link Param Updated: %s",
-//                       Util_convertBdAddr2Str(linkInfo.addr));
+        System_printf( "Link Param Updated: %s\r\n",
+                        Util_convertBdAddr2Str(linkInfo.addr));
       }
       else
       {
 //        // Display the address of the connection update failure
-//        Display_printf(dispHandle, EEG_ROW_STATUS_2, 0,
-//                       "Link Param Update Failed 0x%x: %s", pPkt->opcode,
-//                       Util_convertBdAddr2Str(linkInfo.addr));
+        System_printf ("Link Param Update Failed 0x%x: %s\r\n", pPkt->opcode,
+                       Util_convertBdAddr2Str(linkInfo.addr));
       }
 
       // Check if there are any queued parameter updates
@@ -1249,7 +1195,6 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
     }
 
     default:
-    //  Display_clearLines(dispHandle, EEG_ROW_STATUS_1, EEG_ROW_STATUS_2);
       break;
   }
 }
@@ -1295,7 +1240,8 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
   {
     case BATTERY_LEVEL_ID:
       EEGservice_GetParameter(BATTERY_LEVEL_ID, &newValue);
-
+      System_printf("Char: %2x\r\n",
+                    newValue);
 //      Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "BATTERY: %2x", (uint16_t)newValue);
       break;
 
@@ -1321,17 +1267,11 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
 static void BT5_EEG_performPeriodicTask(void)
 {
     uint8_t valueToCopy;
-    extern UART_Handle uart;
 
     valueToCopy= BQ25895_Getdata(BQ25895_Addr,BQ25895_REG04);
 
-
     EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN_MIN),
                             &valueToCopy);
-
-    UART_write(uart,&valueToCopy,EEG_BATTERY_LEVEL_LEN_MIN);
-
-
 }
 
 #if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)
@@ -1503,11 +1443,6 @@ static void BT5_EEG_processAdvEvent(GapAdvEventData_t *pEventData)
 
     case GAP_EVT_ADV_SET_TERMINATED:
     {
-#ifndef Display_DISABLE_ALL
-      GapAdv_setTerm_t *advSetTerm = (GapAdv_setTerm_t *)(pEventData->pBuf);
-#endif
-//      Display_printf(dispHandle, EEG_ROW_ADVSTATE, 0, "Adv Set %d disabled after conn %d",
-//                     advSetTerm->handle, advSetTerm->connHandle );
     }
     break;
 
@@ -1597,7 +1532,7 @@ static void BT5_EEG_passcodeCb(uint8_t *pDeviceAddr,
  *
  * @return  none
  */
-static void BT5_EEG_processPairState(PairStateData_t *pPairData)
+/*static void BT5_EEG_processPairState(PairStateData_t *pPairData)
 {
   uint8_t state = pPairData->state;
   uint8_t status = pPairData->status;
@@ -1645,6 +1580,7 @@ static void BT5_EEG_processPairState(PairStateData_t *pPairData)
       break;
   }
 }
+*/
 
 /*********************************************************************
  * @fn      BT5_EEG_processPasscode
@@ -1653,7 +1589,7 @@ static void BT5_EEG_processPairState(PairStateData_t *pPairData)
  *
  * @return  none
  */
-static void BT5_EEG_processPasscode(PasscodeData_t *pPasscodeData)
+/*static void BT5_EEG_processPasscode(PasscodeData_t *pPasscodeData)
 {
   // Display passcode to user
   if (pPasscodeData->uiOutputs != 0)
@@ -1668,6 +1604,7 @@ static void BT5_EEG_processPasscode(PasscodeData_t *pPasscodeData)
                          B_APP_DEFAULT_PASSCODE);
 #endif
 }
+*/
 
 /*********************************************************************
  * @fn      BT5_EEG_connEvtCB
@@ -1844,9 +1781,9 @@ static uint8_t BT5_EEG_clearConnListEntry(uint16_t connHandle)
     // Get connection index from handle
     connIndex = BT5_EEG_getConnIndex(connHandle);
     if(connIndex >= MAX_NUM_BLE_CONNS)
-	{
-	  return(bleInvalidRange);
-	}
+    {
+      return(bleInvalidRange);
+    }
   }
 
   // Clear specific handle or all handles
@@ -2105,7 +2042,7 @@ static void BT5_EEG_processCmdCompleteEvt(hciEvt_CmdComplete_t *pMsg)
 //                       (uint32_t)(rssi),
 //                       connList[index].rssiAvg);
 
-	  } // end of if (status == SUCCESS)
+      } // end of if (status == SUCCESS)
       break;
     }
 
@@ -2344,7 +2281,6 @@ bool BT5_EEG_doEnablePTMMode(uint8_t index)
 
   // Disable Advertising and destroy sets
   GapAdv_destroy(advHandleLegacy,GAP_ADV_FREE_OPTION_ALL_DATA);
-  GapAdv_destroy(advHandleLongRange,GAP_ADV_FREE_OPTION_ALL_DATA);
 
   // Intercept NPI RX events.
   NPITask_registerIncomingRXEventAppCB(BT5_EEG_handleNPIRxInterceptEvent, INTERCEPT);

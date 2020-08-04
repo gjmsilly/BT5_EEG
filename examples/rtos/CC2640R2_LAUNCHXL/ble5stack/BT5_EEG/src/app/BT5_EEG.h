@@ -56,6 +56,8 @@ extern "C"
 /*********************************************************************
  * INCLUDES
  */
+#include <xdc/runtime/System.h>
+#include "bq25895.h"
 
 /*********************************************************************
 *  EXTERNAL VARIABLES
@@ -77,15 +79,6 @@ extern "C"
  * Task creation function for the Simple Peripheral.
  */
 extern void BT5_EEG_createTask(void);
-
-/*
- * Functions for menu action
- */
-/* Actions for Menu: Choose connection to work with */
-bool BT5_EEG_doSelectConn(uint8 index);
-
-/* Actions for Menu: Set PHY - Select */
-bool BT5_EEG_doSetConnPhy(uint8 index);
 
 #ifdef PTM_MODE
 /* Actions for Menu: Enable PTM Mode */

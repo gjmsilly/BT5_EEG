@@ -19,7 +19,7 @@
 #endif
 
 /**
- * @brief shell鎻愮ず淇℃伅鏂囨湰绱㈠紩
+ * @brief shell提示信息文本索引
  */
 enum
 {
@@ -35,7 +35,7 @@ enum
 };
 
 /**
- * @brief shell鎻愮ず淇℃伅鏂囨湰
+ * @brief shell提示信息文本
  */
 static const char *shellText[] = 
 {
@@ -56,7 +56,7 @@ static const char *shellText[] =
 };
 
 
-static SHELL_TypeDef *shellList[SHELL_MAX_NUMBER] = {NULL};     /**< shell鍒楄〃 */
+static SHELL_TypeDef *shellList[SHELL_MAX_NUMBER] = {NULL};     /**< shell〃 */
 
 static void shellAdd(SHELL_TypeDef *shell);
 static void shellDisplayItem(SHELL_TypeDef *shell, unsigned short index);
@@ -73,13 +73,14 @@ void shellListVariables(void);
 
 #if SHELL_USING_CMD_EXPORT != 1
 /**
- * @brief shell榛樿鍛戒护琛�
+ * @brief shell默认命令表
  * 
- * @note 褰撲娇鐢ㄥ懡浠よ〃鏂瑰紡瀹氫箟鍛戒护鐨勬椂鍊欙紝姝よ〃鎵嶄細鐢熸晥
- * @note 娣诲姞鍛戒护鏃讹紝鍙娇鐢⊿HELL_CMD_ITEM瀹忥紝濡係HELL_CMD_ITEM(help, shellHelp, command help)
- * @note 鍙笉浣跨敤榛樿鍛戒护琛紝鍒濆鍖栧畬鎴愪箣鍚庯紝鍙皟鐢╯hellSetCommandList鎺ュ彛璁剧疆鍛戒护琛�
+ * @note 当使用命令表方式定义命令的时候，此表才会生效
+ * @note 添加命令时，可使用SHELL_CMD_ITEM宏，如SHELL_CMD_ITEM(help, shellHelp, command help)
+ * @note 可不使用默认命令表，初始化完成之后，可调用shellSetCommandList接口设置命令表
  */
 #include "bq25895.h"
+//#include "ads1299.h"
 
 const SHELL_CommandTypeDef shellDefaultCommandList[] =
 {
@@ -91,11 +92,14 @@ const SHELL_CommandTypeDef shellDefaultCommandList[] =
     SHELL_CMD_ITEM(cls, shellClear, clear command line),
     SHELL_CMD_ITEM(bq25895_read,BQ25895_Getdata,command bq25895_read),
     SHELL_CMD_ITEM(bq25895_write,BQ25895_SetParam,command bq25895_write),
+	// SHELL_CMD_ITEM(ADS1299_Reset,ADS1299_Reset,command ADS1299_Reset),
+    // SHELL_CMD_ITEM(ADS1299_PowerOn,ADS1299_PowerOn,command ADS1299_PowerOn),
+    // SHELL_CMD_ITEM(ADS1299_ReadREG,ADS1299_ReadREG,command ADS1299_ReadREG),
 };
 
 #if SHELL_USING_VAR == 1
 /**
- * @brief shell榛樿鍙橀噺琛�
+ * @brief shell默认变量表
  * 
  */
 const SHELL_VaribaleTypeDef shellDefaultVariableList[] = 
@@ -106,7 +110,7 @@ const SHELL_VaribaleTypeDef shellDefaultVariableList[] =
 #endif /** SHELL_USING_CMD_EXPORT != 1 */
 
 /**
- * @brief 榛樿鎸夐敭鍝嶅簲鏄犲皠鍑芥暟琛�
+ * @brief 默认按键响应映射函数表
  * 
  */
 const SHELL_KeyFunctionDef shellDefaultKeyFunctionList[] = 
@@ -121,9 +125,9 @@ const SHELL_KeyFunctionDef shellDefaultKeyFunctionList[] =
 
 
 /**
- * @brief shell鍒濆鍖�
+ * @brief shell初始化
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 void shellInit(SHELL_TypeDef *shell)
 {
@@ -207,14 +211,14 @@ void shellInit(SHELL_TypeDef *shell)
 
 #if SHELL_USING_CMD_EXPORT != 1
 /**
- * @brief shell璁剧疆鍛戒护琛�
+ * @brief shell设置命令表
  * 
- * @param shell shell瀵硅薄
- * @param base 鍛戒护琛ㄥ熀鍧�
- * @param size 鍛戒护鏁伴噺
+ * @param shell shell对象
+ * @param base 命令表基址
+ * @param size 命令数量
  * 
- * @note 姝ゆ帴鍙ｄ笉鍙湪shellInit涔嬪墠璋冪敤
- * @note 涓嶈皟鐢ㄦ鎺ュ彛锛屽垯浣跨敤榛樿鍛戒护琛ㄦ垨鍛戒护瀵煎嚭褰㈡垚鐨勫懡浠よ〃(鍙栧喅浜庡懡浠ゅ畾涔夋柟寮�)
+ * @note 此接口不可在shellInit之前调用
+ * @note 不调用此接口，则使用默认命令表或命令导出形成的命令表(取决于命令定义方式)
  */
 void shellSetCommandList(SHELL_TypeDef *shell, SHELL_CommandTypeDef *base, unsigned short size)
 {
@@ -225,14 +229,14 @@ void shellSetCommandList(SHELL_TypeDef *shell, SHELL_CommandTypeDef *base, unsig
 
 #if SHELL_USING_VAR == 1
 /**
- * @brief shell璁剧疆鍙橀噺琛�
+ * @brief shell设置变量表
  * 
- * @param shell shell瀵硅薄
- * @param base 鍙橀噺琛ㄥ熀鍧�
- * @param size 鍙橀噺鏁伴噺
+ * @param shell shell对象
+ * @param base 变量表基址
+ * @param size 变量数量
  * 
- * @note 姝ゆ帴鍙ｄ笉鍙湪shellInit涔嬪墠璋冪敤
- * @note 涓嶈皟鐢ㄦ鎺ュ彛锛屽垯浣跨敤榛樿鍛戒护琛ㄦ垨鍛戒护瀵煎嚭褰㈡垚鐨勫懡浠よ〃(鍙栧喅浜庡懡浠ゅ畾涔夋柟寮�)
+ * @note 此接口不可在shellInit之前调用
+ * @note 不调用此接口，则使用默认命令表或命令导出形成的命令表(取决于命令定义方式)
  */
 void shellSetVariableList(SHELL_TypeDef *shell, SHELL_VaribaleTypeDef *base, unsigned short size)
 {
@@ -244,11 +248,11 @@ void shellSetVariableList(SHELL_TypeDef *shell, SHELL_VaribaleTypeDef *base, uns
 
 
 /**
- * @brief shell璁剧疆鎸夐敭鍝嶅簲
+ * @brief shell设置按键响应
  * 
- * @param shell shell瀵硅薄
- * @param base 鎸夐敭鍝嶅簲琛ㄥ熀鍧�
- * @param size 鎸夐敭鍝嶅簲鏁伴噺
+ * @param shell shell对象
+ * @param base 按键响应表基址
+ * @param size 按键响应数量
  */
 void shellSetKeyFuncList(SHELL_TypeDef *shell, SHELL_KeyFunctionDef *base, unsigned short size)
 {
@@ -258,9 +262,9 @@ void shellSetKeyFuncList(SHELL_TypeDef *shell, SHELL_KeyFunctionDef *base, unsig
 
 
 /**
- * @brief 娣诲姞shell鍒皊hell鍒楄〃
+ * @brief 添加shell到shell列表
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellAdd(SHELL_TypeDef *shell)
 {
@@ -276,9 +280,9 @@ static void shellAdd(SHELL_TypeDef *shell)
 
 
 /**
- * @brief 鑾峰彇褰撳墠娲诲姩shell
+ * @brief 获取当前活动shell
  * 
- * @return SHELL_TypeDef* 褰撳墠娲诲姩shell瀵硅薄
+ * @return SHELL_TypeDef* 当前活动shell对象
  */
 SHELL_TypeDef *shellGetCurrent(void)
 {
@@ -295,11 +299,11 @@ SHELL_TypeDef *shellGetCurrent(void)
 
 #if SHELL_PRINT_BUFFER > 0
 /**
- * @brief shell鏍煎紡鍖栬緭鍑�
+ * @brief shell格式化输出
  * 
- * @param shell shell瀵硅薄
- * @param fmt 鏍煎紡鍖栧瓧绗︿覆
- * @param ... 鍙傛暟
+ * @param shell shell对象
+ * @param fmt 格式化字符串
+ * @param ... 参数
  */
 void shellPrint(SHELL_TypeDef *shell, char *fmt, ...)
 {
@@ -321,11 +325,11 @@ void shellPrint(SHELL_TypeDef *shell, char *fmt, ...)
 
 
 /**
- * @brief shell鏄剧ず瀛楃涓�
+ * @brief shell显示字符串
  * 
- * @param shell shell瀵硅薄
- * @param string 瀛楃涓�
- * @return unsigned short 瀛楃涓查暱搴�
+ * @param shell shell对象
+ * @param string 字符串
+ * @return unsigned short 字符串长度
  */
 unsigned short shellDisplay(SHELL_TypeDef *shell, const char *string)
 {
@@ -344,10 +348,10 @@ unsigned short shellDisplay(SHELL_TypeDef *shell, const char *string)
 
 
 /**
- * @brief shell鏄剧ず瀛楃
+ * @brief shell显示字符
  * 
- * @param shell shel瀵硅薄
- * @param data 瀛楃
+ * @param shell shel对象
+ * @param data 字符
  */
 static void shellDisplayByte(SHELL_TypeDef *shell, char data)
 {
@@ -361,10 +365,10 @@ static void shellDisplayByte(SHELL_TypeDef *shell, char data)
 
 #if SHELL_USING_VAR == 1 || SHELL_DISPLAY_RETURN == 1
 /**
- * @brief shell鏄剧ず鍊�
+ * @brief shell显示值
  * 
- * @param shell shell瀵硅薄
- * @param value 鍊�
+ * @param shell shell对象
+ * @param value 值
  */
 static void shellDisplayValue(SHELL_TypeDef *shell, int value)
 {
@@ -406,10 +410,10 @@ static void shellDisplayValue(SHELL_TypeDef *shell, int value)
 
 #if SHELL_DISPLAY_RETURN == 1
 /**
- * @brief shell鏄剧ず鍑芥暟璋冪敤杩斿洖鍊�
+ * @brief shell显示函数调用返回值
  * 
- * @param shell shel瀵硅薄
- * @param value 鍊�
+ * @param shell shel对象
+ * @param value 值
  */
 static void shellDisplayReturn(SHELL_TypeDef *shell, int value)
 {
@@ -420,11 +424,11 @@ static void shellDisplayReturn(SHELL_TypeDef *shell, int value)
 
 
 /**
- * @brief shell瀛楃涓插鍒�
+ * @brief shell字符串复制
  * 
- * @param dest 鐩爣瀛楃涓�
- * @param src 婧愬瓧绗︿覆
- * @return unsigned short 瀛楃涓查暱搴�
+ * @param dest 目标字符串
+ * @param src 源字符串
+ * @return unsigned short 字符串长度
  */
 static unsigned short shellStringCopy(char *dest, char* src)
 {
@@ -440,11 +444,11 @@ static unsigned short shellStringCopy(char *dest, char* src)
 
 
 /**
- * @brief shell瀛楃涓叉瘮杈�
+ * @brief shell字符串比较
  * 
- * @param dest 鐩爣瀛楃涓�
- * @param src 婧愬瓧绗︿覆
- * @return unsigned short 鍖归厤闀垮害
+ * @param dest 目标字符串
+ * @param src 源字符串
+ * @return unsigned short 匹配长度
  */
 static unsigned short shellStringCompare(char* dest, char *src)
 {
@@ -465,10 +469,10 @@ static unsigned short shellStringCompare(char* dest, char *src)
 
 
 /**
- * @brief shell鍒犻櫎
+ * @brief shell删除
  * 
- * @param shell shell瀵硅薄
- * @param length 鍒犻櫎鐨勯暱搴�
+ * @param shell shell对象
+ * @param length 删除的长度
  */
 static void shellDelete(SHELL_TypeDef *shell, unsigned short length)
 {
@@ -480,9 +484,9 @@ static void shellDelete(SHELL_TypeDef *shell, unsigned short length)
 
 
 /**
- * @brief shell娓呴櫎杈撳叆
+ * @brief shell清除输入
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellClearLine(SHELL_TypeDef *shell)
 {
@@ -495,9 +499,9 @@ static void shellClearLine(SHELL_TypeDef *shell)
 
 
 /**
- * @brief shell鍘嗗彶璁板綍娣诲姞
+ * @brief shell历史记录添加
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellHistoryAdd(SHELL_TypeDef *shell)
 {
@@ -522,10 +526,10 @@ static void shellHistoryAdd(SHELL_TypeDef *shell)
 
 
 /**
- * @brief shell鍘嗗彶璁板綍鏌ユ壘
+ * @brief shell历史记录查找
  * 
- * @param shell shell瀵硅薄
- * @param dir 鏌ユ壘鏂瑰悜
+ * @param shell shell对象
+ * @param dir 查找方向
  */
 static void shellHistory(SHELL_TypeDef *shell, unsigned char dir)
 {
@@ -577,9 +581,9 @@ static void shellHistory(SHELL_TypeDef *shell, unsigned char dir)
 
 
 /**
- * @brief shell鍥炶溅杈撳叆澶勭悊
+ * @brief shell回车输入处理
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellEnter(SHELL_TypeDef *shell)
 {
@@ -709,9 +713,9 @@ static void shellEnter(SHELL_TypeDef *shell)
 
 
 /**
- * @brief shell閫�鏍艰緭鍏ュ鐞�
+ * @brief shell退格输入处理
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellBackspace(SHELL_TypeDef *shell)
 {
@@ -750,9 +754,9 @@ static void shellBackspace(SHELL_TypeDef *shell)
 
 
 /**
- * @brief shell Tab閿緭鍏ュ鐞�
+ * @brief shell Tab键输入处理
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellTab(SHELL_TypeDef *shell)
 {
@@ -849,10 +853,10 @@ static void shellTab(SHELL_TypeDef *shell)
 
 
 /**
- * @brief shell姝ｅ父鎸夐敭澶勭悊
+ * @brief shell正常按键处理
  * 
- * @param shell shell瀵硅薄
- * @param data 杈撳叆鐨勬暟鎹�
+ * @param shell shell对象
+ * @param data 输入的数据
  */
 static void shellNormal(SHELL_TypeDef *shell, char data)
 {
@@ -897,9 +901,9 @@ static void shellNormal(SHELL_TypeDef *shell, char data)
 
 
 /**
- * @brief shell寮�濮媋nsi鎺у埗搴忓垪
+ * @brief shell开始ansi控制序列
  * 
- * @param shell shell瀵硅薄
+ * @param shell shell对象
  */
 static void shellAnsiStart(SHELL_TypeDef *shell)
 {
@@ -908,10 +912,10 @@ static void shellAnsiStart(SHELL_TypeDef *shell)
 
 
 /**
- * @brief shell ansi鎺у埗搴忓垪澶勭悊
+ * @brief shell ansi控制序列处理
  * 
- * @param shell shell瀵硅薄
- * @param data 杈撳叆鐨勬暟鎹�
+ * @param shell shell对象
+ * @param data 输入的数据
  */
 void shellAnsi(SHELL_TypeDef *shell, char data)
 {
@@ -920,15 +924,15 @@ void shellAnsi(SHELL_TypeDef *shell, char data)
     case SHELL_ANSI_CSI:
         switch (data)
         {
-        case 0x41:                                              /** 鏂瑰悜涓婇敭 */
+        case 0x41:                                              /** 方向上键 */
             shellHistory(shell, 0);
             break;  
         
-        case 0x42:                                              /** 鏂瑰悜涓嬮敭 */
+        case 0x42:                                              /** 方向下键 */
             shellHistory(shell, 1);
             break;
 
-        case 0x43:                                              /** 鏂瑰悜鍙抽敭 */
+        case 0x43:                                              /** 方向右键 */
             if (shell->cursor < shell->length)
             {
                 shellDisplayByte(shell, shell->buffer[shell->cursor]);
@@ -936,7 +940,7 @@ void shellAnsi(SHELL_TypeDef *shell, char data)
             }
             break;
 
-        case 0x44:                                              /** 鏂瑰悜宸﹂敭 */
+        case 0x44:                                              /** 方向左键 */
             if (shell->cursor > 0)
             {
                 shellDisplayByte(shell, '\b');
@@ -968,10 +972,10 @@ void shellAnsi(SHELL_TypeDef *shell, char data)
 
 
 /**
- * @brief shell澶勭悊
+ * @brief shell处理
  * 
- * @param shell shell瀵硅薄
- * @param data 杈撳叆鏁版嵁
+ * @param shell shell对象
+ * @param data 输入数据
  */
 void shellHandler(SHELL_TypeDef *shell, char data)
 {
@@ -1043,7 +1047,6 @@ void shellHandler(SHELL_TypeDef *shell, char data)
 #if SHELL_USING_TASK == 1
 
 #include <xdc/std.h>
-
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Task.h>
 
@@ -1051,8 +1054,8 @@ void shellHandler(SHELL_TypeDef *shell, char data)
 #include "Board.h"
 
 /*      EXTERNS     */
-SHELL_TypeDef shell;
-extern UART_Handle uart;
+SHELL_TypeDef 		shell;
+extern UART_Handle  uart;
 
 /*   Task's stac    */
 uint8_t shellTask0Stack[SHELL_TASK_STACK_SIZE];
@@ -1102,15 +1105,13 @@ void User_Shell_Write(char data)
  */
 signed char User_Shell_Read(char *data)
 {
-    UART_read(uart, data, 1);
-
-    if(*data==0)
+    if(UART_read(uart, data, 1)==1)
     {
-        return -1;
+        return 0;
     }
     else
     {
-        return 0;
+        return -1;
     }
 
 }
@@ -1153,11 +1154,11 @@ void shellTask(UArg arg0, UArg arg1)
 
 #if SHELL_USING_VAR == 1
 /**
- * @brief shell鑾峰彇鍙橀噺
+ * @brief shell获取变量
  * 
- * @param shell shell瀵硅薄
- * @param var 鍙傛暟
- * @return int 鍙橀噺鍊�
+ * @param shell shell对象
+ * @param var 参数
+ * @return int 变量值
  */
 int shellGetVariable(SHELL_TypeDef *shell, char *var)
 {
@@ -1197,10 +1198,10 @@ int shellGetVariable(SHELL_TypeDef *shell, char *var)
 
 
 /**
- * @brief shell璁剧疆鍙橀噺鍊�
+ * @brief shell设置变量值
  * 
- * @param var 鍙橀噺
- * @param value 鍊�
+ * @param var 变量
+ * @param value 值
  */
 void shellSetVariable(char *var, int value)
 {
@@ -1249,10 +1250,10 @@ SHELL_EXPORT_CMD_EX(setVar, shellSetVariable, set var, setVar $[var] [value]);
 
 
 /**
- * @brief shell鏄剧ず鍙橀噺
+ * @brief shell显示变量
  * 
- * @param shell shell瀵硅薄
- * @param var 鍙橀噺
+ * @param shell shell对象
+ * @param var 变量
  */
 static void shellDisplayVariable(SHELL_TypeDef *shell, char *var)
 {
@@ -1263,7 +1264,7 @@ static void shellDisplayVariable(SHELL_TypeDef *shell, char *var)
 
 
 /**
- * @brief shell鏄剧ず鎵�鏈夊彉閲�
+ * @brief shell显示所有变量
  * 
  */
 void shellListVariables(void)
@@ -1294,12 +1295,11 @@ void shellListVariables(void)
 }
 SHELL_EXPORT_CMD(vars, shellListVariables, show vars);
 #endif /** SHELL_USING_VAR == 1 */
-
 /**
- * @brief shell鏄剧ず涓�鏉″懡浠や俊鎭�
+ * @brief shell显示一条命令信息
  * 
- * @param shell shell瀵硅薄
- * @param index 瑕佹樉绀虹殑鍛戒护绱㈠紩
+ * @param shell shell对象
+ * @param index 要显示的命令索引
  */
 static void shellDisplayItem(SHELL_TypeDef *shell, unsigned short index)
 {
@@ -1319,10 +1319,10 @@ static void shellDisplayItem(SHELL_TypeDef *shell, unsigned short index)
 
 
 /**
- * @brief shell甯姪
+ * @brief shell帮助
  * 
- * @param argc 鍙傛暟涓暟
- * @param argv 鍙傛暟
+ * @param argc 参数个数
+ * @param argv 参数
  */
 void shellHelp(int argc, char *argv[])
 {
@@ -1370,7 +1370,7 @@ SHELL_EXPORT_CMD_EX(help, shellHelp, command help, help [command] --show help in
 
 
 /**
- * @brief 娓呯┖鍛戒护琛�
+ * @brief 清空命令行
  * 
  */
 void shellClear(void)

@@ -78,10 +78,18 @@ extern const PIN_Config BoardGpioInitTable[];
 #define CC2640R2F_EEG_ADS1299_CS_ON         0
 #define CC2640R2F_EEG_ADS1299_CS_OFF        1
 
-/* Oscillator 2.048MHz */
+#define CC2640R2F_EEG_SPI_ADS1299_nDRDY     IOID_23
+#define CC2640R2F_EEG_ADS1299_READY         0
+#define CC2640R2F_EEG_ADS1299_NOT_READY     1
+
+#define Mod_RESET                           IOID_28
+#define Mod_nPDWN                           IOID_29
+
+/* Oscillator 2.048MHz for ads1299 */
 #define CC2640R2F_EEG_ADC_CLK				IOID_22
 #define CC2640R2F_EEG_ADC_CLK_ON         	1
 #define CC2640R2F_EEG_ADC_CLK_OFF       	0
+
 
 /* UART */
 #define CC2640R2F_EEG_UART_RX               IOID_2          /* RXD */

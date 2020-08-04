@@ -13,7 +13,6 @@
 #define     __SHELL_H__
 
 #include "shell_cfg.h"
-#include <stdint.h>
 
 #if SHELL_USING_AUTH == 1
     #if !defined(SHELL_USER_PASSWORD)
@@ -21,10 +20,10 @@
     #endif  
 #endif      
 
-#define     SHELL_VERSION               "2.0.8"                 /**< 鐗堟湰鍙� */
+#define     SHELL_VERSION               "2.0.8"                 /**< 版本号 */
 
 /**
- * @brief shell閿�煎畾涔�
+ * @brief shell键值定义
  * 
  */
 #define     SHELL_KEY_LF                0x0A
@@ -63,7 +62,7 @@
 #define     SHELL_KEY_CTRL_Z            0x1A
 
 /**
- * @brief shell鍙橀噺绫诲瀷瀹氫箟
+ * @brief shell变量类型定义
  * 
  */
 #define     SHELL_VAR_INT               0
@@ -83,9 +82,9 @@
 #endif
 
 /**
- * @brief shell鍛戒护瀵煎嚭
+ * @brief shell命令导出
  * 
- * @attention 鍛戒护瀵煎嚭鏂瑰紡鏀寔keil,iar鐨勭紪璇戝櫒浠ュ強gcc锛屽叿浣撳弬鑰價eadme
+ * @attention 命令导出方式支持keil,iar的编译器以及gcc，具体参考readme
  */
 #if SHELL_USING_CMD_EXPORT == 1
 #if SHELL_LONG_HELP == 1
@@ -170,9 +169,9 @@
 
 
 /**
- * @brief shell鍛戒护鏉＄洰
+ * @brief shell命令条目
  * 
- * @note 鐢ㄤ簬shell鍛戒护閫氳繃鍛戒护琛ㄧ殑鏂瑰紡瀹氫箟
+ * @note 用于shell命令通过命令表的方式定义
  */
 #if SHELL_USING_CMD_EXPORT == 0
 #if SHELL_LONG_HELP == 1
@@ -224,31 +223,31 @@
 #endif /** SHELL_USING_CMD_EXPORT == 0 */
 
 /**
- * @brief shell璇诲彇鏁版嵁鍑芥暟鍘熷瀷
+ * @brief shell读取数据函数原型
  * 
- * @param char shell璇诲彇鐨勫瓧绗�
+ * @param char shell读取的字符
  * 
- * @return char 0 璇诲彇鏁版嵁鎴愬姛
- * @return char -1 璇诲彇鏁版嵁澶辫触
+ * @return char 0 读取数据成功
+ * @return char -1 读取数据失败
  */
 typedef signed char (*shellRead)(char *);
 
 /**
- * @brief shell鍐欐暟鎹嚱鏁板師鍨�
+ * @brief shell写数据函数原型
  * 
- * @param const char 闇�鍐欑殑瀛楃
+ * @param const char 需写的字符
  */
 typedef void (*shellWrite)(const char);
 
 /**
- * @brief shell鎸囦护鎵ц鍑芥暟鍘熷瀷
+ * @brief shell指令执行函数原型
  * 
  */
 typedef int (*shellFunction)();
 
 
 /**
- * @brief shell杈撳叆鐘舵��
+ * @brief shell输入状态
  * 
  */
 typedef enum
@@ -260,81 +259,81 @@ typedef enum
 
 
 /**
- * @brief shell 鍛戒护瀹氫箟
+ * @brief shell 命令定义
  * 
  */
 typedef struct
 {
-    const char *name;                                           /**< shell鍛戒护鍚嶇О */
-    shellFunction function;                                     /**< shell鍛戒护鍑芥暟 */
-    const char *desc;                                           /**< shell鍛戒护鎻忚堪 */
+    const char *name;                                           /**< shell命令名称 */
+    shellFunction function;                                     /**< shell命令函数 */
+    const char *desc;                                           /**< shell命令描述 */
 #if SHELL_LONG_HELP == 1
-    const char *help;                                           /**< shell闀垮府鍔╀俊鎭� */
+    const char *help;                                           /**< shell长帮助信息 */
 #endif
 }SHELL_CommandTypeDef;
 
 
 #if SHELL_USING_VAR == 1
 /**
- * @brief shell 鍙橀噺瀹氫箟
+ * @brief shell 变量定义
  * 
  */
 typedef struct
 {
-    const char *name;                                           /**< shell鍙橀噺鍚嶇О */
-    const void *value;                                          /**< shell鍙橀噺鍊� */
-    const char *desc;                                           /**< shell鍙橀噺鎻忚堪 */
-    const int type;                                             /**< shell鍙橀噺绫诲瀷 */
+    const char *name;                                           /**< shell变量名称 */
+    const void *value;                                          /**< shell变量值 */
+    const char *desc;                                           /**< shell变量描述 */
+    const int type;                                             /**< shell变量类型 */
 } SHELL_VaribaleTypeDef;
 #endif /** SHELL_USING_VAR == 1 */
 
 
 /**
- * @brief shell瀵硅薄瀹氫箟
+ * @brief shell对象定义
  * 
  */
 typedef struct
 {
-    char *command;                                              /**< shell鍛戒护鎻愮ず绗� */
-    char buffer[SHELL_COMMAND_MAX_LENGTH];                      /**< shell鍛戒护缂撳啿 */
-    unsigned short length;                                      /**< shell鍛戒护闀垮害 */
-    unsigned short cursor;                                      /**< shell鍏夋爣浣嶇疆 */
-    char *param[SHELL_PARAMETER_MAX_NUMBER];                    /**< shell鍙傛暟 */
-    char history[SHELL_HISTORY_MAX_NUMBER][SHELL_COMMAND_MAX_LENGTH];  /**< 鍘嗗彶璁板綍 */
-    unsigned short historyCount;                                /**< 鍘嗗彶璁板綍鏁伴噺 */
-    short historyFlag;                                          /**< 褰撳墠璁板綍浣嶇疆 */
-    short historyOffset;                                        /**< 鍘嗗彶璁板綍鍋忕Щ */
-    SHELL_CommandTypeDef *commandBase;                          /**< 鍛戒护琛ㄥ熀鍧� */
-    unsigned short commandNumber;                               /**< 鍛戒护鏁伴噺 */
+    char *command;                                              /**< shell命令提示符 */
+    char buffer[SHELL_COMMAND_MAX_LENGTH];                      /**< shell命令缓冲 */
+    unsigned short length;                                      /**< shell命令长度 */
+    unsigned short cursor;                                      /**< shell光标位置 */
+    char *param[SHELL_PARAMETER_MAX_NUMBER];                    /**< shell参数 */
+    char history[SHELL_HISTORY_MAX_NUMBER][SHELL_COMMAND_MAX_LENGTH];  /**< 历史记录 */
+    unsigned short historyCount;                                /**< 历史记录数量 */
+    short historyFlag;                                          /**< 当前记录位置 */
+    short historyOffset;                                        /**< 历史记录偏移 */
+    SHELL_CommandTypeDef *commandBase;                          /**< 命令表基址 */
+    unsigned short commandNumber;                               /**< 命令数量 */
 #if SHELL_USING_VAR == 1
-    SHELL_VaribaleTypeDef *variableBase;                        /**< 鍙橀噺琛ㄥ熀鍧� */
-    unsigned short variableNumber;                              /**< 鍙橀噺鏁伴噺 */
+    SHELL_VaribaleTypeDef *variableBase;                        /**< 变量表基址 */
+    unsigned short variableNumber;                              /**< 变量数量 */
 #endif
-    int keyFuncBase;                                            /**< 鎸夐敭鍝嶅簲琛ㄥ熀鍧� */
-    unsigned short keyFuncNumber;                               /**< 鎸夐敭鍝嶅簲鏁伴噺 */
+    int keyFuncBase;                                            /**< 按键响应表基址 */
+    unsigned short keyFuncNumber;                               /**< 按键响应数量 */
     struct
     {
-        unsigned char inputMode : 2;                            /**< 杈撳叆妯″紡 */
-        unsigned char isActive: 1;                              /**< 鏄惁鏄綋鍓嶆椿鍔╯hell */
-        unsigned char tabFlag : 1;                              /**< tab鏍囧織 */
-        unsigned char authFlag : 1;                             /**< 瀵嗙爜鏍囧織 */
-    } status;                                                   /**< shell鐘舵�� */
-    shellRead read;                                             /**< shell璇诲瓧绗� */
-    shellWrite write;                                           /**< shell鍐欏瓧绗� */
+        unsigned char inputMode : 2;                            /**< 输入模式 */
+        unsigned char isActive: 1;                              /**< 是否是当前活动shell */
+        unsigned char tabFlag : 1;                              /**< tab标志 */
+        unsigned char authFlag : 1;                             /**< 密码标志 */
+    } status;                                                   /**< shell状态 */
+    shellRead read;                                             /**< shell读字符 */
+    shellWrite write;                                           /**< shell写字符 */
 #if SHELL_LONG_HELP == 1 || (SHELL_USING_AUTH && SHELL_LOCK_TIMEOUT > 0)
-    int activeTime;                                             /**< shell婵�娲绘椂闂存埑 */
+    int activeTime;                                             /**< shell激活时间戳 */
 #endif
 }SHELL_TypeDef;
 
 
 /**
- * @brief shell鎸夐敭鍔熻兘瀹氫箟
+ * @brief shell按键功能定义
  * 
  */
 typedef struct
 {
-    unsigned char keyCode;                                      /**< shell鎸夐敭閿�� */
-    void (*keyFunction)(SHELL_TypeDef *);                       /**< 鎸夐敭鍝嶅簲鍑芥暟 */
+    unsigned char keyCode;                                      /**< shell按键键值 */
+    void (*keyFunction)(SHELL_TypeDef *);                       /**< 按键响应函数 */
 } SHELL_KeyFunctionDef;
 
 
@@ -362,7 +361,7 @@ void shellClear(void);
 extern SHELL_TypeDef shell;
 
 #define SHELL_TASK_STACK_SIZE   600 // min size 512 for TI-RTOS task
-#define SHELL_TASK_PRIORITY     1
+#define SHELL_TASK_PRIORITY     3
 
 void shellTask(UArg arg0, UArg arg1);
 void shell_createTask(void);
@@ -371,4 +370,3 @@ void User_Shell_Init(void);
 #endif
 
 #endif
-

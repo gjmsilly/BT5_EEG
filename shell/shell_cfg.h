@@ -30,7 +30,7 @@
  *        使能此宏后，可以使用`SHELL_EXPORT_CMD()`或者`SHELL_EXPORT_CMD_EX()`
  *        定义shell命令，关闭此宏的情况下，需要使用命令表的方式
  */
-#define     SHELL_USING_CMD_EXPORT     0
+#define     SHELL_USING_CMD_EXPORT      0
 
 /**
  * @brief 是否使用变量功能

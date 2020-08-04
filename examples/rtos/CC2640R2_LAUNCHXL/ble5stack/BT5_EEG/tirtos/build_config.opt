@@ -122,7 +122,7 @@
 /* -DGATT_DB_OFF_CHIP */
 
 /* Include GAP Bond Manager */
--DGAP_BOND_MGR
+/*-DGAP_BOND_MGR*/
 
 /* BLE v4.1 Features */
 /* -DV41_FEATURES=L2CAP_COC_CFG */

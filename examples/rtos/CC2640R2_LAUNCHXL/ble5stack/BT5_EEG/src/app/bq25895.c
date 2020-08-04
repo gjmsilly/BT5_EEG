@@ -1,7 +1,7 @@
 /**
  * @file    bq25895.c
  * @author  gjmsilly
- * @brief   bq25895 Firmware for CC2640R2F
+ * @brief   bq25895 communication with CC2640R2F
  * @version 1.0
  * @date    2020-07-27
  *

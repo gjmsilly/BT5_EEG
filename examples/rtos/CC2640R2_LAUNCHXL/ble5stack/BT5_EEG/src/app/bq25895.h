@@ -1,7 +1,7 @@
 /**
  * @file    bq25895.h
  * @author  gjmsilly
- * @brief   bq25895 Firmware for CC2640R2F
+ * @brief    bq25895 communication with CC2640R2F
  * @version 1.0
  * @date    2020-07-27
  *
@@ -16,7 +16,6 @@
 
 
 /*---------- P32 Register Maps --------*/
-// TI 缂栬瘧鍣� 灏忕瀵归綈
 
 /*********************************************/
 /** 	Structure definition for REG00 		**/
