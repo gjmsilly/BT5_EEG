@@ -64,7 +64,7 @@
  * CONSTANTS
  */
 
-#define SERVAPP_NUM_ATTR_SUPPORTED        5
+#define SERVAPP_NUM_ATTR_SUPPORTED        8
 
 /*********************************************************************
  * TYPEDEFS
@@ -85,7 +85,11 @@ CONST uint8 BatterylevelUUID[ATT_BT_UUID_SIZE] =
   LO_UINT16(BATTERY_LEVEL_UUID), HI_UINT16(BATTERY_LEVEL_UUID)
 };
 
-
+// ADS1299 COMMAND UUID: 0xFFF2
+CONST uint8 AdcommandUUID[ATT_BT_UUID_SIZE] =
+{
+  LO_UINT16(ADS1299_COMMAND_UUID), HI_UINT16(ADS1299_COMMAND_UUID)
+};
 
 /*********************************************************************
  * EXTERNAL VARIABLES
@@ -105,23 +109,21 @@ static EEG_CBs_t *PAppCBs = NULL;
  * Profile Attributes - variables
  */
 
-// EEG Service declaration
-static CONST gattAttrType_t EEGServiceDecl = { ATT_BT_UUID_SIZE, EEGServUUID };
+/* Service "EEG" */
+static CONST gattAttrType_t EEGServiceDecl = { ATT_BT_UUID_SIZE, EEGServUUID };// EEG Service declaration
 
-// Characteristic "Battery level" Properties (for declaration)
-static uint8 BatterylevelProps = GATT_PROP_NOTIFY | GATT_PROP_WRITE ;
+/* Characteristic "Battery level" */
+static uint8 BatterylevelProps = GATT_PROP_NOTIFY | GATT_PROP_WRITE ; // Characteristic "Battery level" Properties (for declaration)
+static uint8 BatterylevelVal[EEG_BATTERY_LEVEL_LEN] = {}; // Characteristic "Battery level" Value variable
+static uint16_t BatterylevelValLen = EEG_BATTERY_LEVEL_LEN_MIN;// Length of data in characteristic "Battery level" Value variable, initialized to minimal size.
+static uint8 BatterylevelUserDesp[12] = "Batterylevel";// Characteristic "Battery level" User Description
+static gattCharCfg_t *BatterylevelConfig;// Characteristic "Battery level" Client Characteristic Configuration Descriptor
 
-// Characteristic "Battery level" Value variable
-static uint8 BatterylevelVal[EEG_BATTERY_LEVEL_LEN] = {};
-
-// Length of data in characteristic "Battery level" Value variable, initialized to minimal size.
-static uint16_t BatterylevelValLen = EEG_BATTERY_LEVEL_LEN_MIN;
-
-// Characteristic "Battery level" User Description
-static uint8 BatterylevelUserDesp[12] = "Batterylevel";
-
-// Characteristic "Battery level" Client Characteristic Configuration Descriptor
-static gattCharCfg_t *BatterylevelConfig;
+/* Characteristic "ADS1299 COMMAND" */
+static uint8 AdcommandProps = GATT_PROP_READ | GATT_PROP_WRITE ;
+static uint8 AdcommandVal;
+static uint16_t AdcommandValLen = EEG_ADS1299_COMMAND_LEN;
+static uint8 AdcommandUserDesp[14] = "Ads1299command";
 
 /*********************************************************************
  * Profile Attributes - Table
@@ -168,6 +170,30 @@ static gattAttribute_t EEGservice_AttrTbl[SERVAPP_NUM_ATTR_SUPPORTED] =
         0,
         (uint8_t *)&BatterylevelConfig
       },
+
+      // Characteristic "ADS1299 COMMAND" Declaration
+      {
+        { ATT_BT_UUID_SIZE, characterUUID },
+        GATT_PERMIT_READ,
+        0,
+        &AdcommandProps
+      },
+
+        // Characteristic "ADS1299 COMMAND" Value
+        {
+          { ATT_BT_UUID_SIZE, AdcommandUUID },
+           GATT_PERMIT_WRITE | GATT_PERMIT_READ,
+          0,
+          &AdcommandVal
+        },
+
+        // Characteristic "ADS1299 COMMAND" User Description
+        {
+          { ATT_BT_UUID_SIZE, charUserDescUUID },
+          GATT_PERMIT_READ,
+          0,
+          AdcommandUserDesp
+        },
 };
 
 /*********************************************************************
@@ -287,39 +313,52 @@ bStatus_t EEGservice_RegisterAppCBs( EEG_CBs_t *appCallbacks )
 bStatus_t EEGservice_SetParameter( uint8 param, uint8 len, void *value )
 {
   bStatus_t ret = SUCCESS;
-  uint8_t  *pAttrVal;
-  uint16_t *pValLen;
+  uint8_t  *pAttrVal;                   // point to attribute value
+  uint16_t *pValLen;                    // point to attribute value length
   uint16_t valMinLen;
   uint16_t valMaxLen;
+  uint8_t  sendNotiInd = FALSE;         // flag to decide whether to notify
 
   switch ( param )
   {
     case BATTERY_LEVEL_ID:
         pAttrVal = BatterylevelVal;
+        pValLen = &BatterylevelValLen;
         valMinLen = EEG_BATTERY_LEVEL_LEN_MIN;
         valMaxLen = EEG_BATTERY_LEVEL_LEN;
-        pValLen = &BatterylevelValLen;
+        sendNotiInd = TRUE;
+        break;
 
-      if ( len <= valMaxLen && len >= valMinLen )
-      {
-		memcpy( pAttrVal, value, len );
-		*pValLen = len; // Update length for read and get.
-
-		// Try to send notification
-		GATTServApp_ProcessCharCfg( BatterylevelConfig, pAttrVal, FALSE,
-			                        EEGservice_AttrTbl, GATT_NUM_ATTRS( EEGservice_AttrTbl ),
-			                        INVALID_TASK_ID, EEGservice_ReadAttrCB );
-      }
-      else
-      {
-        ret = bleInvalidRange;
-      }
-      break;
+    case ADS1299_COMMAND_ID:
+        pAttrVal = &AdcommandVal;
+        pValLen = &AdcommandValLen;
+        valMinLen = valMaxLen = EEG_ADS1299_COMMAND_LEN;
+        break;
 
     default:
       ret = INVALIDPARAMETER;
       break;
   }
+
+  // Check bounds, update value and send notification or indication if possible.
+  if ( len <= valMaxLen && len >= valMinLen )
+  {
+    memcpy( pAttrVal, value, len );
+    *pValLen = len; // Update length for read and get. (note pValLen point to the char length variable)
+
+    if(sendNotiInd)
+    {
+    // Try to send notification
+    GATTServApp_ProcessCharCfg( BatterylevelConfig, pAttrVal, FALSE,
+                                EEGservice_AttrTbl, GATT_NUM_ATTRS( EEGservice_AttrTbl ),
+                                INVALID_TASK_ID, EEGservice_ReadAttrCB );
+    }
+  }
+  else
+  {
+    ret = bleInvalidRange;
+  }
+
 
   return ( ret );
 }
@@ -340,12 +379,17 @@ bStatus_t EEGservice_SetParameter( uint8 param, uint8 len, void *value )
 bStatus_t EEGservice_GetParameter( uint8 param, void *value )
 {
   bStatus_t ret = SUCCESS;
+
   switch ( param )
   {
     case BATTERY_LEVEL_ID:
 	  memcpy( value, BatterylevelVal, BatterylevelValLen );
       break;
-	  
+
+    case ADS1299_COMMAND_ID:
+      *((uint8*)value) = AdcommandVal;
+      break;
+
     default:
       ret = INVALIDPARAMETER;
       break;
@@ -376,12 +420,7 @@ static bStatus_t EEGservice_ReadAttrCB (uint16_t connHandle,
 										uint8_t method)
 {
   bStatus_t status = SUCCESS;
-
-  // Make sure it's not a blob operation (no attributes in the profile are long)
-  if ( offset > 0 )
-  {
-    return ( ATT_ERR_ATTR_NOT_LONG );
-  }
+  uint16_t valueLen;
 
   if ( pAttr->type.len == ATT_BT_UUID_SIZE )
   {
@@ -389,20 +428,31 @@ static bStatus_t EEGservice_ReadAttrCB (uint16_t connHandle,
     uint16 uuid = BUILD_UINT16( pAttr->type.uuid[0], pAttr->type.uuid[1]);
     switch ( uuid )
     {
-      // No need for "GATT_SERVICE_UUID" or "GATT_CLIENT_CHAR_CFG_UUID" cases;
-      // gattserverapp handles those reads
-
       case BATTERY_LEVEL_UUID:
-        *pLen = BatterylevelValLen;
-        memcpy( pValue, pAttr->pValue, BatterylevelValLen );
-        break;
+          valueLen = BatterylevelValLen;
+          break;
+
+      case ADS1299_COMMAND_UUID:
+          valueLen = AdcommandValLen;
+          break;
 
       default:
-        // Should never get here! (characteristics 3 and 4 do not have read permissions)
-        *pLen = 0;
+        // Should never get here!
         status = ATT_ERR_ATTR_NOT_FOUND;
         break;
     }
+
+    // Check bounds and return the value
+    if(offset > valueLen)   // Prevent malicious ATT ReadBlob offsets.
+    {
+        status = ATT_ERR_INVALID_OFFSET;
+    }
+    else
+    {
+        *pLen = MIN(maxLen, valueLen - offset); // Transmit as much as possible
+        memcpy(pValue, pAttr->pValue + offset, *pLen);
+    }
+
   }
   else
   {
@@ -435,6 +485,7 @@ static bStatus_t EEGservice_WriteAttrCB(uint16_t connHandle,
 {
   bStatus_t status = SUCCESS;
   uint8 notifyApp = 0xFF;
+  uint8 paramID = 0xFF;
   uint16_t writeLenMin;
   uint16_t writeLenMax;
   uint16_t *pValueLenVar;
@@ -443,59 +494,68 @@ static bStatus_t EEGservice_WriteAttrCB(uint16_t connHandle,
   {
     // 16-bit UUID
     uint16 uuid = BUILD_UINT16( pAttr->type.uuid[0], pAttr->type.uuid[1]);
-    switch ( uuid )
+    if (uuid == GATT_CLIENT_CHAR_CFG_UUID )
     {
-      case BATTERY_LEVEL_UUID:
-
-          writeLenMin  = EEG_BATTERY_LEVEL_LEN_MIN;     // MIN Length of Characteristic
-          writeLenMax  = EEG_BATTERY_LEVEL_LEN;         // MAX Length of Characteristic in bytes
-          pValueLenVar = &BatterylevelValLen;           // Current Length of Characteristic in bytes
-
-          // Check whether the length is within bounds.
-          if ( offset >= writeLenMax )
-          {
-            status = ATT_ERR_INVALID_OFFSET;
-          }
-          else if ( offset + len > writeLenMax )
-          {
-            status = ATT_ERR_INVALID_VALUE_SIZE;
-          }
-          else if ( offset + len < writeLenMin && ( method == ATT_EXECUTE_WRITE_REQ || method == ATT_WRITE_REQ ) )
-          {
-            status = ATT_ERR_INVALID_VALUE_SIZE;
-          }
-
-        // Write the value
-          else
+      // Request is regarding a Client Characterisic Configuration
+       status = GATTServApp_ProcessCCCWriteReq( connHandle, pAttr, pValue, len,
+                                                offset, GATT_CLIENT_CFG_NOTIFY );
+    }
+    else
+    {
+        switch ( uuid )
         {
-	       // Copy pValue into the variable we point to from the attribute table.
-		   memcpy(pAttr->pValue + offset, pValue, len);
-		   
-		   // Only notify application and update length if enough data is written.
-		   // Note: If reliable writes are used (meaning several attributes are written to using ATT PrepareWrite),
-		   //       the application will get a callback for every write with an offset + len larger than EEG_BATTERY_LEVEL_LEN.
-		   // Note: For Long Writes (ATT Prepare + Execute towards only one attribute) only one callback will be issued,
-           //       because the write fragments are concatenated before being sent here.
-			
-			if ( offset + len >= writeLenMin )
-		   {
-				notifyApp = BATTERY_LEVEL_ID;
-				*pValueLenVar = offset + len; // Update data length.
-			}
+          case BATTERY_LEVEL_UUID:
+              writeLenMin  = EEG_BATTERY_LEVEL_LEN_MIN;     // MIN Length of Characteristic
+              writeLenMax  = EEG_BATTERY_LEVEL_LEN;         // MAX Length of Characteristic in bytes
+              pValueLenVar = &BatterylevelValLen;           // Current Length of Characteristic in bytes
+              paramID      = BATTERY_LEVEL_ID;
+              break;
 
+          case ADS1299_COMMAND_UUID:
+              pValueLenVar = &AdcommandValLen;
+              writeLenMin= writeLenMax = EEG_ADS1299_COMMAND_LEN;
+              paramID      = ADS1299_COMMAND_ID;
+              break;
+
+          default:
+            // Should never get here!
+            status = ATT_ERR_ATTR_NOT_FOUND;
+            break;
         }
 
-        break;
+              // Check whether the length is within bounds.
+              if ( offset >= writeLenMax )
+              {
+                status = ATT_ERR_INVALID_OFFSET;
+              }
+              else if ( offset + len > writeLenMax )
+              {
+                status = ATT_ERR_INVALID_VALUE_SIZE;
+              }
+              else if ( offset + len < writeLenMin && ( method == ATT_EXECUTE_WRITE_REQ || method == ATT_WRITE_REQ ) )
+              {
+                status = ATT_ERR_INVALID_VALUE_SIZE;
+              }
 
-     case GATT_CLIENT_CHAR_CFG_UUID: // Request is regarding a Client Characterisic Configuration
-		  status = GATTServApp_ProcessCCCWriteReq( connHandle, pAttr, pValue, len,
-                                                   offset, GATT_CLIENT_CFG_NOTIFY );
-        break;
+            // Write the value
+              else
+            {
+               // Copy pValue into the variable we point to from the attribute table.
+               memcpy(pAttr->pValue + offset, pValue, len);
 
-      default:
-        // Should never get here! (characteristics 2 and 4 do not have write permissions)
-        status = ATT_ERR_ATTR_NOT_FOUND;
-        break;
+               // Only notify application and update length if enough data is written.
+               // Note: If reliable writes are used (meaning several attributes are written to using ATT PrepareWrite),
+               //       the application will get a callback for every write with an offset + len larger than EEG_BATTERY_LEVEL_LEN.
+               // Note: For Long Writes (ATT Prepare + Execute towards only one attribute) only one callback will be issued,
+               //       because the write fragments are concatenated before being sent here.
+
+                if ( offset + len >= writeLenMin )
+               {
+                    notifyApp = paramID;
+                    *pValueLenVar = offset + len; // Update data length.
+                }
+
+            }
     }
   }
   else

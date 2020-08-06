@@ -58,6 +58,7 @@ extern "C"
  */
 #include <xdc/runtime/System.h>
 #include "bq25895.h"
+#include "ads1299.h"
 
 /*********************************************************************
 *  EXTERNAL VARIABLES

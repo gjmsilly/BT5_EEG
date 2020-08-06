@@ -53,17 +53,16 @@ const PIN_Config BoardGpioInitTable[] = {
     CC2640R2F_EEG_UART_RX | PIN_INPUT_EN | PIN_PULLDOWN,                                                 /* UART RX via debugger back channel */
     CC2640R2F_EEG_UART_TX | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL,                            /* UART TX via debugger back channel */
 
-    CC2640R2F_EEG_SPI1_MOSI | PIN_INPUT_EN | PIN_PULLDOWN,                                               /* SPI master out - slave in */
-    CC2640R2F_EEG_SPI1_MISO | PIN_INPUT_EN | PIN_PULLDOWN,                                               /* SPI master in - slave out */
-    CC2640R2F_EEG_SPI1_CLK | PIN_INPUT_EN | PIN_PULLDOWN,                                                /* SPI clock */
-    CC2640R2F_EEG_SPI_ADS1299_CS | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL | PIN_DRVSTR_MIN,   /* ADS1299 chip select - default off */
-    Mod_RESET | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,                       /* ADS1299 reset - default off */
-    Mod_nPDWN | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL | PIN_DRVSTR_MIN,                      /* ADS1299 power down - default off */
-    CC2640R2F_EEG_ADC_CLK | PIN_GPIO_OUTPUT_EN| PIN_GPIO_HIGH | PIN_PUSHPULL ,                           /* Oscillator 2.048MHz - default on */
+    CC2640R2F_EEG_SPI_ADS1299_CS | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL | PIN_DRVSTR_MAX,   /* ADS1299 chip select - default off */
+    Mod_RESET | PIN_GPIO_OUTPUT_EN ,                                                                     /* ADS1299 reset - default off */
+    Mod_nPDWN | PIN_GPIO_OUTPUT_EN ,                                                                     /* ADS1299 power down - default off */
+    Mod_START | PIN_GPIO_OUTPUT_EN ,                                                                     /* ADS1299 START PIN */
+    CC2640R2F_EEG_ADC_CLK | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL ,                          /* Oscillator 2.048MHz - default on */
+    //CC2640R2F_EEG_SPI_ADS1299_nDRDY | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,                     /* ADS1299 ready to transfer - set as edge dect */
 
     PIN_TERMINATE
 };
-//   CC2640R2F_EEG_SPI_ADS1299_nDRDY | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,                       /* ADS1299 ready to transfer - set as edge dect */
+
 const PINCC26XX_HWAttrs PINCC26XX_hwAttrs = {
     .intPriority = ~0,
     .swiPriority = 0

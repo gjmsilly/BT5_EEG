@@ -60,13 +60,19 @@ extern "C"
  * CONSTANTS
  */
 // EEG Service defines
-#define EEG_SERV_UUID                		0xFFF0  // UUID
+#define EEG_SERV_UUID                		 0xFFF0  // UUID
 
 // Battery level Characteristic defines
-#define BATTERY_LEVEL_ID         		  	0  
-#define BATTERY_LEVEL_UUID		            0xFFF1
-#define EEG_BATTERY_LEVEL_LEN         	    50		// MAX Length of Characteristic in bytes
-#define EEG_BATTERY_LEVEL_LEN_MIN           1       // MIN Length of Characteristic in bytes
+#define BATTERY_LEVEL_ID         		     0
+#define BATTERY_LEVEL_UUID		             0xFFF1
+#define EEG_BATTERY_LEVEL_LEN         	     5		// MAX Length of Characteristic in bytes
+#define EEG_BATTERY_LEVEL_LEN_MIN            1       // MIN Length of Characteristic in bytes
+
+// ADS1299 COMMAND Characteristic defines
+#define ADS1299_COMMAND_ID                   1
+#define ADS1299_COMMAND_UUID                 0xFFF2
+#define EEG_ADS1299_COMMAND_LEN              1      // MAX Length of Characteristic in bytes
+
 
 // Proximity Profile Services bit fields
 #define EEG_SERVICE               			0x00000001

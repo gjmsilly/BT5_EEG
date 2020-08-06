@@ -64,14 +64,14 @@ extern const PIN_Config BoardGpioInitTable[];
 #define CC2640R2F_EEG_I2C0_SDA0             IOID_19
 
 /* SPI */
-#define CC2640R2F_EEG_SPI0_MISO             PIN_UNASSIGNED     
-#define CC2640R2F_EEG_SPI0_MOSI             PIN_UNASSIGNED      
-#define CC2640R2F_EEG_SPI0_CLK              PIN_UNASSIGNED        
+#define CC2640R2F_EEG_SPI0_MISO             PIN_UNASSIGNED
+#define CC2640R2F_EEG_SPI0_MOSI             PIN_UNASSIGNED
+#define CC2640R2F_EEG_SPI0_CLK              PIN_UNASSIGNED
 #define CC2640R2F_EEG_SPI0_CSN              PIN_UNASSIGNED
 #define CC2640R2F_EEG_SPI1_MISO             IOID_24
 #define CC2640R2F_EEG_SPI1_MOSI             IOID_30
 #define CC2640R2F_EEG_SPI1_CLK              IOID_25
-#define CC2640R2F_EEG_SPI1_CSN              IOID_14 // not used for ads1299 chip select
+#define CC2640R2F_EEG_SPI1_CSN              PIN_UNASSIGNED
 
 /* SPI ads1299 */
 #define CC2640R2F_EEG_SPI_ADS1299_CS		IOID_26
@@ -82,6 +82,7 @@ extern const PIN_Config BoardGpioInitTable[];
 #define CC2640R2F_EEG_ADS1299_READY         0
 #define CC2640R2F_EEG_ADS1299_NOT_READY     1
 
+#define Mod_START                           IOID_27
 #define Mod_RESET                           IOID_28
 #define Mod_nPDWN                           IOID_29
 

@@ -191,8 +191,10 @@
         <file path="EXAMPLE_BLE_ROOT/src/app/bq25895.h" openOnCreation="" excludeFromBuild="false" action="copy" targetDirectory="Application" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
 		<file path="SRC_BLE_DIR/common/cc26xx/util.c" openOnCreation="" excludeFromBuild="false" action="copy" targetDirectory="Application" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
         <file path="SRC_BLE_DIR/common/cc26xx/util.h" openOnCreation="" excludeFromBuild="false" action="copy" targetDirectory="Application" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
-
-        <!-- Drivers/ECC Folder -->
+		<file path="EXAMPLE_BLE_ROOT/src/app/ads1299.c" openOnCreation="" excludeFromBuild="false" action="copy" targetDirectory="Application" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
+        <file path="EXAMPLE_BLE_ROOT/src/app/ads1299.h" openOnCreation="" excludeFromBuild="false" action="copy" targetDirectory="Application" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
+        
+		<!-- Drivers/ECC Folder -->
         <file path="SRC_BLE_DIR/common/cc26xx/ecc/ECCROMCC26XX.c" openOnCreation="" excludeFromBuild="false" action="link" targetDirectory="Drivers/ECC" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
         <file path="SRC_BLE_DIR/common/cc26xx/ecc/ECCROMCC26XX.h" openOnCreation="" excludeFromBuild="false" action="link" targetDirectory="Drivers/ECC" createVirtualFolders="true" applicableConfigurations="FlashROM, FlashROM_StackLibrary, FlashROM_StackLibrary_RCOSC, FlashROM_StackLibrary_PTM"/>
 

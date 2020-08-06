@@ -249,6 +249,8 @@ typedef struct
 /*********************************************************************
  * GLOBAL VARIABLES
  */
+// test ads1299
+uint8_t RegNum;
 
 // Task configuration
 Task_Struct EEGTask;
@@ -599,10 +601,13 @@ static void BT5_EEG_init(void)
   // http://software-dl.ti.com/lprf/ble5stack-latest/
   {
 
-    uint8_t batterylevelVal[EEG_BATTERY_LEVEL_LEN_MIN] = {1};
+    uint8_t batterylevelVal[EEG_BATTERY_LEVEL_LEN_MIN] = {0x00};
+    uint8_t AdcommandVal = 0x00;
 
     EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN_MIN),
                             batterylevelVal);
+    EEGservice_SetParameter(ADS1299_COMMAND_ID, sizeof(EEG_ADS1299_COMMAND_LEN),
+                            &AdcommandVal);
   }
 
   // Register callback with EEG SERVICE
@@ -1235,16 +1240,19 @@ static void BT5_EEG_charValueChangeCB(uint8_t paramId)
 static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
 {
   uint8_t newValue;
-
   switch(paramId)
   {
     case BATTERY_LEVEL_ID:
       EEGservice_GetParameter(BATTERY_LEVEL_ID, &newValue);
       System_printf("Char: %2x\r\n",
                     newValue);
-//      Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "BATTERY: %2x", (uint16_t)newValue);
       break;
-
+    case ADS1299_COMMAND_ID:
+        EEGservice_GetParameter(ADS1299_COMMAND_ID, &newValue);
+        RegNum = newValue;
+        System_printf("RegNum: %2x\r\n",
+                      RegNum);
+        break;
     default:
       // should not reach here!
       break;
@@ -1266,12 +1274,15 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
  */
 static void BT5_EEG_performPeriodicTask(void)
 {
-    uint8_t valueToCopy;
+//    uint8_t valueToCopy;
+//
+//    valueToCopy= BQ25895_Getdata(BQ25895_Addr,BQ25895_REG04);
+    uint8_t REG_result;
 
-    valueToCopy= BQ25895_Getdata(BQ25895_Addr,BQ25895_REG04);
+    REG_result=ADS1299_ReadREG(0,RegNum);
+    EEGservice_SetParameter(BATTERY_LEVEL_ID, 1,
+                            &REG_result);
 
-    EEGservice_SetParameter(BATTERY_LEVEL_ID, sizeof(EEG_BATTERY_LEVEL_LEN_MIN),
-                            &valueToCopy);
 }
 
 #if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)

@@ -43,6 +43,9 @@ sdk安装至默认路径下`C:\ti\simplelink_cc2640r2_sdk_4_20_00_04`。
 4. 本工程支持shell调试模式，如需使用shell，在`properties` -> `ARM Compiler` -> `Predefined Symbols` 中添加预定义符`SHELL_MODE`，并把工程支持包中的shell文件夹拖至工程目录。 
 ![](https://github.com/gjmsilly/BT5_EEG/blob/master/imgs/shell_mode.png) 
 
+若启用shell模式，需要增大堆栈，建议将堆栈选项设置为空以让系统自动分配足够堆栈。
+![](https://github.com/gjmsilly/BT5_EEG/blob/master/imgs/allocate_heap.png) 
+
 ## 更新日志
 - 2020/7/25   v1.0
 
@@ -69,9 +72,12 @@ sdk安装至默认路径下`C:\ti\simplelink_cc2640r2_sdk_4_20_00_04`。
 - 2020/8/4   v1.4  
   
   - 进一步裁剪应用程序，禁用GAP BOND MGR/SNV/长广播。
-
-## Reference
-- [BLE5-Stack User’s Guide](http://dev.ti.com/tirex/explore/content/simplelink_cc2640r2_sdk_3_20_00_21/docs/ble5stack/ble_user_guide/html/ble-stack-5.x-guide/index-cc2640.html#stack-user-s-guide)
   
+- 2020/8/6   v1.5  
+  
+  - 添加ads1299通信程序，支持蓝牙服务控制寄存器读写。
+
+## References
+- [BLE5-Stack User’s Guide](http://dev.ti.com/tirex/explore/content/simplelink_cc2640r2_sdk_3_20_00_21/docs/ble5stack/ble_user_guide/html/ble-stack-5.x-guide/index-cc2640.html#stack-user-s-guide)
 - [Adding basic printf over uart with TI-RTOS](https://processors.wiki.ti.com/index.php/CC26xx_Adding_basic_printf_over_uart_with_TI-RTOS)
 - [裁剪例程](https://e2echina.ti.com/question_answer/wireless_connectivity/bluetooth/f/103/t/189813?tisearch=e2e-sitesearch&keymatch=ble%20%E8%87%AA%E5%8A%A8%E6%96%AD)

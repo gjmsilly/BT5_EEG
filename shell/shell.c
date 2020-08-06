@@ -80,7 +80,7 @@ void shellListVariables(void);
  * @note 可不使用默认命令表，初始化完成之后，可调用shellSetCommandList接口设置命令表
  */
 #include "bq25895.h"
-//#include "ads1299.h"
+#include "ads1299.h"
 
 const SHELL_CommandTypeDef shellDefaultCommandList[] =
 {
@@ -92,9 +92,8 @@ const SHELL_CommandTypeDef shellDefaultCommandList[] =
     SHELL_CMD_ITEM(cls, shellClear, clear command line),
     SHELL_CMD_ITEM(bq25895_read,BQ25895_Getdata,command bq25895_read),
     SHELL_CMD_ITEM(bq25895_write,BQ25895_SetParam,command bq25895_write),
-	// SHELL_CMD_ITEM(ADS1299_Reset,ADS1299_Reset,command ADS1299_Reset),
-    // SHELL_CMD_ITEM(ADS1299_PowerOn,ADS1299_PowerOn,command ADS1299_PowerOn),
-    // SHELL_CMD_ITEM(ADS1299_ReadREG,ADS1299_ReadREG,command ADS1299_ReadREG),
+	SHELL_CMD_ITEM(SS,ADS1299_SendCommand,command command),
+    SHELL_CMD_ITEM(RR,ADS1299_ReadREG,command dev & address),
 };
 
 #if SHELL_USING_VAR == 1

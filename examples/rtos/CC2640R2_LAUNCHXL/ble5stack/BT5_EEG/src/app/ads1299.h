@@ -12,7 +12,8 @@
 #ifndef __ADS1299_H
 #define __ADS1299_H
 
-#include <ti/drivers/GPIO.h>
+#include <driverlib/gpio.h>
+#include <Board.h>
 
 /****************************************************************/
 /* return types and return codes                                */
@@ -536,16 +537,13 @@ typedef struct
 #define ADS1299_ParaGroup_STBY  3
 #define ADS1299_ParaGroup_TSIG  4 // internal test signal
 
-#define Mod_nCS                 26
-#define Mod_RESET               28
-#define Mod_nPDWN               29
 
-#define Mod_CS_Enable	 GPIO_write(Mod_nCS,0);
-#define Mod_CS_Disable   GPIO_write(Mod_nCS,1);
-#define Mod_RESET_L      GPIO_write(Mod_RESET,0);
-#define Mod_RESET_H      GPIO_write(Mod_RESET,1);
-#define Mod_PDWN_L       GPIO_write(Mod_nPDWN,0);
-#define Mod_PDWN_H       GPIO_write(Mod_nPDWN,1);
+#define Mod_CS_Enable	 GPIO_writeDio(CC2640R2F_EEG_SPI_ADS1299_CS,0);
+#define Mod_CS_Disable   GPIO_writeDio(CC2640R2F_EEG_SPI_ADS1299_CS,1);
+#define Mod_RESET_L      GPIO_writeDio(Mod_RESET,0);
+#define Mod_RESET_H      GPIO_writeDio(Mod_RESET,1);
+#define Mod_PDWN_L       GPIO_writeDio(Mod_nPDWN,0);
+#define Mod_PDWN_H       GPIO_writeDio(Mod_nPDWN,1);
 
 
 void ADS1299_init(void);
@@ -555,16 +553,14 @@ void ADS1299_Reset(uint8_t dev);
 void ADS1299_PowerOn(uint8_t dev);
 void ADS1299_WriteREG(uint8_t dev, uint8_t address, uint8_t value);
 uint8_t ADS1299_ReadREG(uint8_t dev, uint8_t address);
-void ADS1299_SendCommand( uint8_t command);
+bool ADS1299_SendCommand( uint8_t command);
 
 void ADS1299_ReadResult(uint8_t *result);
 void ADS1299_Parameter_Config(uint8_t mode,uint8_t sample);
 void ADS1299_Channel_Config(uint8_t dev, uint8_t channel, TADS1299CHnSET Para);
-//void ADS1299_Mode_Config(uint8_t mode);
 uint8_t ADS1299_ReadByte(void);
 void ADS1299_ReadResult_DMA(uint32_t DataHeadAddress, uint8_t DataLength);
-
-
 uint8_t ADS1299_Mode_Config(uint8_t);
+
 #endif /* __ADS1299_H */
 
