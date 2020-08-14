@@ -56,7 +56,6 @@
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/knl/Event.h>
 #include <ti/sysbios/knl/Queue.h>
-#include <ti/drivers/utils/List.h>
 
 #if !(defined __TI_COMPILER_VERSION__)
 #include <intrinsics.h>
@@ -104,10 +103,10 @@
 #define DEFAULT_DISCOVERABLE_MODE             GAP_ADTYPE_FLAGS_GENERAL
 
 // Minimum connection interval (units of 1.25ms, 80=100ms) for parameter update request
-#define DEFAULT_DESIRED_MIN_CONN_INTERVAL     120
+#define DEFAULT_DESIRED_MIN_CONN_INTERVAL     12
 
 // Maximum connection interval (units of 1.25ms, 104=130ms) for  parameter update request
-#define DEFAULT_DESIRED_MAX_CONN_INTERVAL     160
+#define DEFAULT_DESIRED_MAX_CONN_INTERVAL     36
 
 // Slave latency to use for parameter update request
 #define DEFAULT_DESIRED_SLAVE_LATENCY         0
@@ -119,33 +118,25 @@
 #define DEFAULT_PARAM_UPDATE_REQ_DECISION     GAP_UPDATE_REQ_PASS_TO_APP
 
 // How often to perform periodic event (in ms)
-#define EEG_PERIODIC_EVT_PERIOD               5000
-
-// How often to read current current RPA (in ms)
-#define EEG_READ_RPA_EVT_PERIOD               3000
-
-// Delay (in ms) after connection establishment before sending a parameter update requst
-#define EEG_SEND_PARAM_UPDATE_DELAY           6000
+//#define EEG_PERIODIC_EVT_PERIOD               5000
 
 // Task configuration
 #define EEG_TASK_PRIORITY                     1
 
 #ifndef EEG_TASK_STACK_SIZE
-#define EEG_TASK_STACK_SIZE                   644
+#define EEG_TASK_STACK_SIZE                   1024
 #endif
 
 // Application events
-#define EEG_STATE_CHANGE_EVT                  0     // 连接状态
-#define EEG_CHAR_CHANGE_EVT                   1     // 特征值变化
-#define EEG_ADV_EVT                           2     // 广播
+#define EEG_DATA_READY_EVT                    0     // nRDY in ads1299 event
+#define EEG_CHAR_CHANGE_EVT                   1
+#define EEG_ADV_EVT                           2
 #if defined(GAP_BOND_MGR)
-#define EEG_PAIR_STATE_EVT                    3     // 配对
-#define EEG_PASSCODE_EVT                      4     // 密钥
+#define EEG_PAIR_STATE_EVT                    3
+#define EEG_PASSCODE_EVT                      4
 #endif
-#define EEG_PERIODIC_EVT                      5     // 定时
-#define EEG_READ_RPA_EVT                      6     // 私人地址连接
-#define EEG_SEND_PARAM_UPDATE_EVT             7     // 参数更新
-#define EEG_CONN_EVT                          8     // 连接参数
+//#define EEG_PERIODIC_EVT                    5
+#define EEG_CONN_EVT                          6
 
 // Internal Events for RTOS application
 #define EEG_ICALL_EVT                         ICALL_MSG_EVENT_ID // Event_Id_31
@@ -156,18 +147,7 @@
                                               EEG_QUEUE_EVT)
 
 // Size of string-converted device address ("0xXXXXXXXXXXXX")
-#define EEG_ADDR_STR_SIZE     15
-
-// For storing the active connections
-#define EEG_RSSI_TRACK_CHNLS                 1            // Max possible channels can be GAP_BONDINGS_MAX
-#define EEG_MAX_RSSI_STORE_DEPTH             5
-#define EEG_INVALID_HANDLE                   0xFFFF
-#define RSSI_2M_THRSHLD                      -30
-#define RSSI_1M_THRSHLD                      -40
-#define RSSI_S2_THRSHLD                      -50
-#define RSSI_S8_THRSHLD                      -60
-#define EEG_PHY_NONE                         LL_PHY_NONE  // No PHY set
-#define AUTO_PHY_UPDATE                      0xFF
+#define EEG_ADDR_STR_SIZE                    15
 
 // Spin if the expression is not true
 #define BT5_EEG_ASSERT(expr) if (!(expr)) BT5_EEG_spin();
@@ -183,6 +163,13 @@ typedef struct
   uint8_t event;                // event type
   void    *pData;               // pointer to message
 } Evt_t;
+
+// Struct for message about ads1299 state
+typedef struct
+{
+    PIN_Id pinId;
+    bool state;
+} Ads1299State_t;
 
 // Container to store passcode data when passing from gapbondmgr callback
 // to app event. See the pfnPairStateCB_t documentation from the gapbondmgr.h
@@ -223,35 +210,15 @@ typedef struct
   uint8_t data[];
 } ClockEventData_t;
 
-// List element for parameter update and PHY command status lists
-typedef struct
-{
-  List_Elem elem;
-  uint16_t  connHandle;
-} ConnHandleEntry_t;
-
 // Connected device information
 typedef struct
 {
   uint16_t              connHandle;                        // Connection Handle
-  ClockEventData_t*     pParamUpdateEventData;
-  Clock_Struct*         pUpdateClock;                      // pointer to clock struct
-  int8_t                rssiArr[EEG_MAX_RSSI_STORE_DEPTH];
-  uint8_t               rssiCntr;
-  int8_t                rssiAvg;
-  bool                  phyCngRq;                          // Set to true if PHY change request is in progress
-  uint8_t               currPhy;
-  uint8_t               rqPhy;
-  uint8_t               phyRqFailCnt;                      // PHY change request count
-  bool                  isAutoPHYEnable;                   // Flag to indicate auto phy change
 } ConnRec_t;
 
 /*********************************************************************
  * GLOBAL VARIABLES
  */
-// test ads1299
-uint8_t RegNum;
-
 // Task configuration
 Task_Struct EEGTask;
 #if defined __TI_COMPILER_VERSION__
@@ -260,6 +227,12 @@ Task_Struct EEGTask;
 #pragma data_alignment=8
 #endif
 uint8_t EEGTaskStack[EEG_TASK_STACK_SIZE];
+
+// Buffer point and state for EEG date transfer
+uint8_t         EEGBuffer_Num=0;       // state to mark the EEGbuffer point
+bool            EEGBuffer_Page=0;      //  mark the buffer1 or buffer2
+uint8_t         *pBuffer1;
+uint8_t         *pBuffer2;
 
 /*********************************************************************
  * LOCAL VARIABLES
@@ -283,24 +256,11 @@ static Clock_Struct clkPeriodic;
 static Clock_Struct clkRpaRead;
 
 // Memory to pass periodic event ID to clock handler
-ClockEventData_t argPeriodic =
-{ .event = EEG_PERIODIC_EVT };
-
-// Memory to pass RPA read event ID to clock handler
-ClockEventData_t argRpaRead =
-{ .event = EEG_READ_RPA_EVT };
+//ClockEventData_t argPeriodic =
+//{ .event = EEG_PERIODIC_EVT };
 
 // Per-handle connection info
 static ConnRec_t connList[MAX_NUM_BLE_CONNS];
-
-// Current connection handle as chosen by menu
-static uint16_t menuConnHandle = CONNHANDLE_INVALID;
-
-// List to store connection handles for set phy command status's
-static List_List setPhyCommStatList;
-
-// List to store connection handles for queued param updates
-static List_List paramUpdateList;
 
 // GAP GATT Attributes
 static uint8_t attDeviceName[GAP_DEVICE_NAME_LEN] = "BT5_EEG";
@@ -359,24 +319,61 @@ static GAP_Addr_Modes_t addrMode = DEFAULT_ADDRESS_MODE;
 static uint8 rpa[B_ADDR_LEN] = {0};
 #endif // PRIVACY_1_2_CFG
 
+/*
+ * ADS1299 pin configuration table:
+ *   - nDRDY interrupts are configured to trigger on falling edge.
+ */
+PIN_Config Ads1299PinTable[] = {
+    CC2640R2F_EEG_SPI_ADS1299_nDRDY | PIN_INPUT_EN |
+    PIN_IRQ_NEGEDGE,   /* ADS1299 ready to transfer - set as edge dect */
+    PIN_TERMINATE
+};
+
+/* Pin driver handles */
+PIN_Handle                  nDRDYPinHandle;
+/* Global memory storage for a PIN_Config table */
+PIN_State                   nDRDYPinState;
+
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-
+/* Task functions */
 static void BT5_EEG_init( void );
 static void BT5_EEG_taskFxn(UArg a0, UArg a1);
+
+/* Event message processing functions */
 static uint8_t BT5_EEG_processStackMsg(ICall_Hdr *pMsg);
 static uint8_t BT5_EEG_processGATTMsg(gattMsgEvent_t *pMsg);
 static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg);
-static void BT5_EEG_advCallback(uint32_t event, void *pBuf, uintptr_t arg);
-static void BT5_EEG_processAdvEvent(GapAdvEventData_t *pEventData);
 static void BT5_EEG_processAppMsg(Evt_t *pMsg);
+static void BT5_EEG_processAdvEvent(GapAdvEventData_t *pEventData);
 static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId);
-static void BT5_EEG_performPeriodicTask(void);
+
+/* Stack or profile callback function */
+static void BT5_EEG_advCallback(uint32_t event, void *pBuf, uintptr_t arg);
+static void BT5_EEG_charValueChangeCB(uint8_t paramId);
+
+/* Connection handling functions */
+static uint8_t BT5_EEG_getConnIndex(uint16_t connHandle);
+static uint8_t BT5_EEG_removeConn(uint16_t connHandle);
+static uint8_t BT5_EEG_clearConnListEntry(uint16_t connHandle);
+static uint8_t BT5_EEG_addConn(uint16_t connHandle);
+
+/* PHY handling functions */
 #if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)
 static void BT5_EEG_updateRPA(void);
 #endif // PRIVACY_1_2_CFG
+
+/* PIN interrupt handling functions */
+static void nDRDYCallbackFxn(PIN_Handle handle, PIN_Id pinId);
+static void BT5_EEG_handleADS1299nDRDY(Ads1299State_t *pMsg);
+
+/* Utility functions */
 static void BT5_EEG_clockHandler(UArg arg);
+static void BT5_EEG_performPeriodicTask(void);
+static status_t BT5_EEG_enqueueMsg(uint8_t event, void *pData);
+
+/* unused */
 #if defined(GAP_BOND_MGR)
 static void BT5_EEG_passcodeCb(uint8_t *pDeviceAddr, uint16_t connHandle,
                                         uint8_t uiInputs, uint8_t uiOutputs,
@@ -386,23 +383,6 @@ static void BT5_EEG_pairStateCb(uint16_t connHandle, uint8_t state,
 static void BT5_EEG_processPairState(PairStateData_t *pPairState);
 static void BT5_EEG_processPasscode(PasscodeData_t *pPasscodeData);
 #endif
-static void BT5_EEG_charValueChangeCB(uint8_t paramId);
-static status_t BT5_EEG_enqueueMsg(uint8_t event, void *pData);
-static void BT5_EEG_processCmdCompleteEvt(hciEvt_CmdComplete_t *pMsg);
-static void BT5_EEG_initPHYRSSIArray(void);
-static void BT5_EEG_updatePHYStat(uint16_t eventCode, uint8_t *pMsg);
-static uint8_t BT5_EEG_addConn(uint16_t connHandle);
-static uint8_t BT5_EEG_getConnIndex(uint16_t connHandle);
-static uint8_t BT5_EEG_removeConn(uint16_t connHandle);
-static void BT5_EEG_processParamUpdate(uint16_t connHandle);
-static status_t BT5_EEG_startAutoPhyChange(uint16_t connHandle);
-static status_t BT5_EEG_stopAutoPhyChange(uint16_t connHandle);
-static status_t BT5_EEG_setPhy(uint16_t connHandle, uint8_t allPhys,
-                                        uint8_t txPhy, uint8_t rxPhy,
-                                        uint16_t phyOpts);
-static uint8_t BT5_EEG_clearConnListEntry(uint16_t connHandle);
-static void BT5_EEG_connEvtCB(Gap_ConnEventRpt_t *pReport);
-static void BT5_EEG_processConnEvt(Gap_ConnEventRpt_t *pReport);
 #ifdef PTM_MODE
 void BT5_EEG_handleNPIRxInterceptEvent(uint8_t *pMsg);      // Declaration
 static void BT5_EEG_sendToNPI(uint8_t *buf, uint16_t len);  // Declaration
@@ -548,9 +528,29 @@ static void BT5_EEG_init(void)
   // Create an RTOS queue for message from profile to be sent to app.
   appMsgQueueHandle = Util_constructQueue(&appMsgQueue);
 
+  // ******************************************************************
+  // Hardware initialization
+  // ******************************************************************
+
   // Create one-shot clock for internal periodic events.
-  Util_constructClock(&clkPeriodic, BT5_EEG_clockHandler,
-                      EEG_PERIODIC_EVT_PERIOD, 0, false, (UArg)&argPeriodic);
+//  Util_constructClock(&clkPeriodic, BT5_EEG_clockHandler, \
+//                      EEG_PERIODIC_EVT_PERIOD, 0, false, (UArg)&argPeriodic);
+
+  /* Initialize the PIN module */
+
+  // Open nDRDY pins
+  nDRDYPinHandle = PIN_open(&nDRDYPinState, Ads1299PinTable);
+  if(!nDRDYPinHandle)
+  {
+      Task_exit();
+  }
+
+  // Setup callback for nDRDY pins
+  if(PIN_registerIntCb(nDRDYPinHandle, &nDRDYCallbackFxn) != 0)
+  {
+      Task_exit();
+  }
+
 
   // Set the Device Name characteristic in the GAP GATT Service
   // For more information, see the section in the User's Guide:
@@ -589,6 +589,10 @@ static void BT5_EEG_init(void)
     GAPBondMgr_SetParameter(GAPBOND_BONDING_ENABLED, sizeof(uint8_t), &bonding);
   }
 #endif
+
+  // ******************************************************************
+  // BLE Service initialization
+  // ******************************************************************
 
   // Initialize GATT attributes
   GGS_AddService(GATT_ALL_SERVICES);           // GAP GATT Service
@@ -649,11 +653,11 @@ static void BT5_EEG_init(void)
   //Initialize GAP layer for Peripheral role and register to receive GAP events
   GAP_DeviceInit(GAP_PROFILE_PERIPHERAL, selfEntity, addrMode, NULL);
 
-  // Initialize array to store connection handle and RSSI values
-  BT5_EEG_initPHYRSSIArray();
-
   // Initialize I2C0 for BQ25895
   BQ25895_init();
+
+  // Initialize SPI and interrupts for ads1299
+  ADS1299_init();
 
 }
 
@@ -760,81 +764,18 @@ static uint8_t BT5_EEG_processStackMsg(ICall_Hdr *pMsg)
       // Process HCI message
       switch(pMsg->status)
       {
-        case HCI_COMMAND_COMPLETE_EVENT_CODE:
-        // Process HCI Command Complete Events here
-        {
-          BT5_EEG_processCmdCompleteEvt((hciEvt_CmdComplete_t *) pMsg);
-          break;
-        }
-
         case HCI_BLE_HARDWARE_ERROR_EVENT_CODE:
         //  AssertHandler(HAL_ASSERT_CAUSE_HARDWARE_ERROR,0);
           break;
-
-        // HCI Commands Events
-        case HCI_COMMAND_STATUS_EVENT_CODE:
-        {
-          hciEvt_CommandStatus_t *pMyMsg = (hciEvt_CommandStatus_t *)pMsg;
-          switch ( pMyMsg->cmdOpcode )
-          {
-            case HCI_LE_SET_PHY:
-            {
-              if (pMyMsg->cmdStatus == HCI_ERROR_CODE_UNSUPPORTED_REMOTE_FEATURE)
-              {
-              System_printf("PHY Change failure, peer does not support this\r\n");
-              }
-              else
-              {
-              System_printf("PHY Update Status Event: 0x%x\r\n", \
-                               pMyMsg->cmdStatus);
-              }
-
-              BT5_EEG_updatePHYStat(HCI_LE_SET_PHY, (uint8_t *)pMsg);
-              break;
-            }
-
-            default:
-              break;
-          }
-          break;
-        }
-
-        // LE Events
-        case HCI_LE_EVENT_CODE:
-        {
-          hciEvt_BLEPhyUpdateComplete_t *pPUC =
-            (hciEvt_BLEPhyUpdateComplete_t*) pMsg;
-
-          // A Phy Update Has Completed or Failed
-          if (pPUC->BLEEventCode == HCI_BLE_PHY_UPDATE_COMPLETE_EVENT)
-          {
-            if (pPUC->status != SUCCESS)
-            {
-              System_printf("PHY Change failure\r\n");
-            }
-            else
-            {
-              // Only symmetrical PHY is supported.
-              // rxPhy should be equal to txPhy.
-                System_printf("PHY Updated to %s",                                  \
-                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_1M) ? "1M\r\n" : \
-                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_2M) ? "2M\r\n" : \
-                             (pPUC->rxPhy == PHY_UPDATE_COMPLETE_EVENT_CODED) ? "CODED" : "Unexpected PHY Value\r\n");
-            }
-
-            BT5_EEG_updatePHYStat(HCI_BLE_PHY_UPDATE_COMPLETE_EVENT, (uint8_t *)pMsg);
-          }
-          break;
-        }
 
         default:
           break;
       }
 
       break;
-    }
+  }
 
-    default:
+  default:
       // do nothing
       break;
   }
@@ -927,6 +868,11 @@ static void BT5_EEG_processAppMsg(Evt_t *pMsg)
 
   switch (pMsg->event)
   {
+
+    case EEG_DATA_READY_EVT:
+        BT5_EEG_handleADS1299nDRDY((Ads1299State_t*)(pMsg->pData));
+      break;
+
     case EEG_CHAR_CHANGE_EVT:
       BT5_EEG_processCharValueChangeEvt(*(uint8_t*)(pMsg->pData));
       break;
@@ -943,31 +889,9 @@ static void BT5_EEG_processAppMsg(Evt_t *pMsg)
       BT5_EEG_processPasscode((PasscodeData_t*)(pMsg->pData));
       break;
 #endif
-    case EEG_PERIODIC_EVT:
-      BT5_EEG_performPeriodicTask();
-      break;
-
-#if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)
-    case EEG_READ_RPA_EVT:
-      BT5_EEG_updateRPA();
-      break;
-#endif // PRIVACY_1_2_CFG
-
-    case EEG_SEND_PARAM_UPDATE_EVT:
-    {
-      // Extract connection handle from data
-      uint16_t connHandle = *(uint16_t *)(((ClockEventData_t *)pMsg->pData)->data);
-
-      BT5_EEG_processParamUpdate(connHandle);
-
-      // This data is not dynamically allocated
-      dealloc = FALSE;
-      break;
-    }
-
-    case EEG_CONN_EVT:
-      BT5_EEG_processConnEvt((Gap_ConnEventRpt_t *)(pMsg->pData));
-      break;
+//    case EEG_PERIODIC_EVT:
+//      BT5_EEG_performPeriodicTask();
+//      break;
 
     default:
       // Do nothing.
@@ -1058,12 +982,12 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 #if defined(BLE_V42_FEATURES) && (BLE_V42_FEATURES & PRIVACY_1_2_CFG)
         if (addrMode > ADDRMODE_RANDOM)
         {
-          BT5_EEG_updateRPA();
-
-          // Create one-shot clock for RPA check event.
-          Util_constructClock(&clkRpaRead, BT5_EEG_clockHandler,
-                              EEG_READ_RPA_EVT_PERIOD, 0, true,
-                              (UArg) &argRpaRead);
+//          BT5_EEG_updateRPA();
+//
+//          // Create one-shot clock for RPA check event.
+//          Util_constructClock(&clkRpaRead, BT5_EEG_clockHandler,
+//                              EEG_READ_RPA_EVT_PERIOD, 0, true,
+//                              (UArg) &argRpaRead);
         }
 #endif // PRIVACY_1_2_CFG
       }
@@ -1082,7 +1006,7 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 
       if (pPkt->hdr.status == SUCCESS)
       {
-        // Add connection to list and start RSSI
+        // Add connection to list
         BT5_EEG_addConn(pPkt->connectionHandle);
 
         // Display the address of this connection
@@ -1091,7 +1015,7 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 
 
         // Start Periodic Clock.
-        Util_startClock(&clkPeriodic);
+        //Util_startClock(&clkPeriodic);
       }
 
       if (numActive < MAX_NUM_BLE_CONNS)
@@ -1118,14 +1042,14 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
       System_printf ( "Num Conns: %d \r\n", \
                     (uint16_t)numActive);
 
-      // Remove the connection from the list and disable RSSI if needed
+      // Remove the connection from the list
       BT5_EEG_removeConn(pPkt->connectionHandle);
 
       // If no active connections
       if (numActive == 0)
       {
         // Stop periodic clock
-        Util_stopClock(&clkPeriodic);
+       // Util_stopClock(&clkPeriodic);
 
       }
 
@@ -1160,41 +1084,6 @@ static void BT5_EEG_processGapMessage(gapEventHdr_t *pMsg)
 
       // Send Reply
       VOID GAP_UpdateLinkParamReqReply(&rsp);
-
-      break;
-    }
-
-    case GAP_LINK_PARAM_UPDATE_EVENT:
-    {
-      gapLinkUpdateEvent_t *pPkt = (gapLinkUpdateEvent_t *)pMsg;
-
-      // Get the address from the connection handle
-      linkDBInfo_t linkInfo;
-      linkDB_GetInfo(pPkt->connectionHandle, &linkInfo);
-
-      if(pPkt->status == SUCCESS)
-      {
-        // Display the address of the connection update
-        System_printf( "Link Param Updated: %s\r\n",
-                        Util_convertBdAddr2Str(linkInfo.addr));
-      }
-      else
-      {
-//        // Display the address of the connection update failure
-        System_printf ("Link Param Update Failed 0x%x: %s\r\n", pPkt->opcode,
-                       Util_convertBdAddr2Str(linkInfo.addr));
-      }
-
-      // Check if there are any queued parameter updates
-      ConnHandleEntry_t *connHandleEntry = (ConnHandleEntry_t *)List_get(&paramUpdateList);
-      if (connHandleEntry != NULL)
-      {
-        // Attempt to send queued update now
-        BT5_EEG_processParamUpdate(connHandleEntry->connHandle);
-
-        // Free list element
-        ICall_free(connHandleEntry);
-      }
 
       break;
     }
@@ -1249,9 +1138,9 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
       break;
     case ADS1299_COMMAND_ID:
         EEGservice_GetParameter(ADS1299_COMMAND_ID, &newValue);
-        RegNum = newValue;
-        System_printf("RegNum: %2x\r\n",
-                      RegNum);
+        ADS1299_SendCommand(newValue);
+        System_printf("command: %2x\r\n",
+                      newValue);
         break;
     default:
       // should not reach here!
@@ -1274,14 +1163,6 @@ static void BT5_EEG_processCharValueChangeEvt(uint8_t paramId)
  */
 static void BT5_EEG_performPeriodicTask(void)
 {
-//    uint8_t valueToCopy;
-//
-//    valueToCopy= BQ25895_Getdata(BQ25895_Addr,BQ25895_REG04);
-    uint8_t REG_result;
-
-    REG_result=ADS1299_ReadREG(0,RegNum);
-    EEGservice_SetParameter(BATTERY_LEVEL_ID, 1,
-                            &REG_result);
 
 }
 
@@ -1324,84 +1205,27 @@ static void BT5_EEG_updateRPA(void)
  */
 static void BT5_EEG_clockHandler(UArg arg)
 {
-  ClockEventData_t *pData = (ClockEventData_t *)arg;
+//  ClockEventData_t *pData = (ClockEventData_t *)arg;
 
- if (pData->event == EEG_PERIODIC_EVT)
- {
-   // Start the next period
-   Util_startClock(&clkPeriodic);
-
-   // Post event to wake up the application
-   BT5_EEG_enqueueMsg(EEG_PERIODIC_EVT, NULL);
- }
- else if (pData->event == EEG_READ_RPA_EVT)
- {
-   // Start the next period
-   Util_startClock(&clkRpaRead);
-
-   // Post event to read the current RPA
-   BT5_EEG_enqueueMsg(EEG_READ_RPA_EVT, NULL);
- }
- else if (pData->event == EEG_SEND_PARAM_UPDATE_EVT)
- {
-    // Send message to app
-    BT5_EEG_enqueueMsg(EEG_SEND_PARAM_UPDATE_EVT, pData);
- }
+// if (pData->event == EEG_PERIODIC_EVT)
+// {
+//   // Start the next period
+//   Util_startClock(&clkPeriodic);
+//
+//   // Post event to wake up the application
+//   BT5_EEG_enqueueMsg(EEG_PERIODIC_EVT, NULL);
+// }
+ //else
+//     if (pData->event == EEG_READ_RPA_EVT)
+// {
+//   // Start the next period
+//   Util_startClock(&clkRpaRead);
+//
+//   // Post event to read the current RPA
+//   BT5_EEG_enqueueMsg(EEG_READ_RPA_EVT, NULL);
+// }
 }
 
-
-
-/*********************************************************************
- * @fn      BT5_EEG_doSetConnPhy
- *
- * @brief   Set PHY preference.
- *
- * @param   index - 0: 1M PHY
- *                  1: 2M PHY
- *                  2: 1M + 2M PHY
- *                  3: CODED PHY (Long range)
- *                  4: 1M + 2M + CODED PHY
- *
- * @return  always true
- */
-bool BT5_EEG_doSetConnPhy(uint8 index)
-{
-  bool status = TRUE;
-
-  static uint8_t phy[] = {
-    HCI_PHY_1_MBPS, HCI_PHY_2_MBPS, HCI_PHY_1_MBPS | HCI_PHY_2_MBPS,
-    HCI_PHY_CODED, HCI_PHY_1_MBPS | HCI_PHY_2_MBPS | HCI_PHY_CODED,
-    AUTO_PHY_UPDATE
-  };
-
-  uint8_t connIndex = BT5_EEG_getConnIndex(menuConnHandle);
-  if (connIndex >= MAX_NUM_BLE_CONNS)
-  {
-//    Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "Connection handle is not in the connList !!!");
-    return FALSE;
-  }
-
-  // Set Phy Preference on the current connection. Apply the same value
-  // for RX and TX.
-  // If auto PHY update is not selected and if auto PHY update is enabled, then
-  // stop auto PHY update
-  // Note PHYs are already enabled by default in build_config.opt in stack project.
-  if(phy[index] != AUTO_PHY_UPDATE)
-  {
-    // Cancel RSSI reading  and auto phy changing
-    BT5_EEG_stopAutoPhyChange(connList[connIndex].connHandle);
-
-    BT5_EEG_setPhy(menuConnHandle, 0, phy[index], phy[index], 0);
-
-  }
-  else
-  {
-    // Start RSSI read for auto PHY update (if it is disabled)
-    BT5_EEG_startAutoPhyChange(menuConnHandle);
-  }
-
-  return status;
-}
 /*********************************************************************
  * @fn      BT5_EEG_advCallback
  *
@@ -1474,6 +1298,106 @@ static void BT5_EEG_processAdvEvent(GapAdvEventData_t *pEventData)
     ICall_free(pEventData->pBuf);
   }
 }
+
+/*********************************************************************
+ * @fn     nDRDYCallbackFxn
+ *
+ * @brief  Callback from PIN driver on interrupt
+ *
+ *
+ * @param  handle    The PIN_Handle instance this is about
+ * @param  pinId     The pin that generated the interrupt
+ */
+
+static void nDRDYCallbackFxn(PIN_Handle handle, PIN_Id pinId)
+{
+
+    PIN_setConfig(handle, PIN_BM_IRQ, pinId | PIN_IRQ_DIS);  // disable the pin interrupt
+
+    Ads1299State_t          ads1299Msg ={ .pinId = pinId };
+    uint8_t                 sendMsg = FALSE; // notify the app
+    uint32_t                status; // status of dma
+
+    pBuffer1=Buffer1;
+    pBuffer2=Buffer2;
+
+
+    status = uDMAIntStatus(UDMA0_BASE);
+    uDMAIntClear(UDMA0_BASE,status);
+
+    Mod_CS_Enable
+
+     if( !EEGBuffer_Page ) // Buffer1
+     {
+        if(EEGBuffer_Num<3)
+        {
+            SPIDMA_transfer((pBuffer1 + 28*EEGBuffer_Num));
+            EEGBuffer_Num++;
+        }
+        else
+        {
+            SPIDMA_transfer((pBuffer1 + 84));
+            EEGBuffer_Num=0;        // reset
+            EEGBuffer_Page=1;       // move to buffer2
+            sendMsg = TRUE;         // notify the ble application
+            ads1299Msg.state = 0;   // ble ready to read buffer1
+        }
+     }
+     else // Buffer2
+     {
+         if(EEGBuffer_Num<3)
+         {
+             SPIDMA_transfer((pBuffer2 + 28*EEGBuffer_Num));
+             EEGBuffer_Num++;
+         }
+         else
+         {
+             SPIDMA_transfer((pBuffer2 + 84));
+             EEGBuffer_Num=0;        // reset
+             EEGBuffer_Page=0;       // move to buffer1
+             sendMsg = TRUE;         // notify the application
+             ads1299Msg.state = 1;   // ble ready to read buffer2
+         }
+     }
+
+     if(sendMsg == TRUE)
+     {
+         Ads1299State_t *pads1299State = ICall_malloc(sizeof(Ads1299State_t));
+         if(pads1299State != NULL)
+         {
+             *pads1299State = ads1299Msg;
+             if(BT5_EEG_enqueueMsg(EEG_DATA_READY_EVT, pads1299State) != SUCCESS)
+             {
+               ICall_free(pads1299State);
+             }
+         }
+     }
+
+     PIN_setConfig(handle, PIN_BM_IRQ, pinId | PIN_IRQ_NEGEDGE);  // disable the pin interrupt
+
+}
+
+/*********************************************************************
+ * @fn     BT5_EEG_handleADS1299nDRDY
+ *
+ * @brief
+ *
+ * @param  handle    The PIN_Handle instance this is about
+ */
+static void BT5_EEG_handleADS1299nDRDY(Ads1299State_t *pMsg)
+{
+    pBuffer1=Buffer1;
+    pBuffer2=Buffer2;
+
+    if (pMsg->state == 0)
+    {
+        EEGservice_SetParameter(BATTERY_LEVEL_ID,112,pBuffer1);
+    }
+    else
+        EEGservice_SetParameter(BATTERY_LEVEL_ID,112,pBuffer2);
+
+}
+
 
 #if defined(GAP_BOND_MGR)
 /*********************************************************************
@@ -1617,48 +1541,6 @@ static void BT5_EEG_passcodeCb(uint8_t *pDeviceAddr,
 }
 */
 
-/*********************************************************************
- * @fn      BT5_EEG_connEvtCB
- *
- * @brief   Connection event callback.
- *
- * @param pReport pointer to connection event report
- */
-static void BT5_EEG_connEvtCB(Gap_ConnEventRpt_t *pReport)
-{
-  // Enqueue the event for processing in the app context.
-  if(BT5_EEG_enqueueMsg(EEG_CONN_EVT, pReport) != SUCCESS)
-  {
-    ICall_free(pReport);
-  }
-}
-
-/*********************************************************************
- * @fn      BT5_EEG_processConnEvt
- *
- * @brief   Process connection event.
- *
- * @param pReport pointer to connection event report
- */
-static void BT5_EEG_processConnEvt(Gap_ConnEventRpt_t *pReport)
-{
-  // Get index from handle
-  uint8_t connIndex = BT5_EEG_getConnIndex(pReport->handle);
-
-  if (connIndex >= MAX_NUM_BLE_CONNS)
-  {
-//    Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "Connection handle is not in the connList !!!");
-    return;
-  }
-
-  // If auto phy change is enabled
-  if (connList[connIndex].isAutoPHYEnable == TRUE)
-  {
-    // Read the RSSI
-    HCI_ReadRssiCmd(pReport->handle);
-  }
-}
-
 
 /*********************************************************************
  * @fn      BT5_EEG_enqueueMsg
@@ -1710,38 +1592,6 @@ static uint8_t BT5_EEG_addConn(uint16_t connHandle)
     {
       // Found available entry to put a new connection info in
       connList[i].connHandle = connHandle;
-
-      // Allocate data to send through clock handler
-      connList[i].pParamUpdateEventData = ICall_malloc(sizeof(ClockEventData_t) +
-                                                       sizeof (uint16_t));
-      if(connList[i].pParamUpdateEventData)
-      {
-        connList[i].pParamUpdateEventData->event = EEG_SEND_PARAM_UPDATE_EVT;
-        *((uint16_t *)connList[i].pParamUpdateEventData->data) = connHandle;
-
-        // Create a clock object and start
-        connList[i].pUpdateClock
-          = (Clock_Struct*) ICall_malloc(sizeof(Clock_Struct));
-
-        if (connList[i].pUpdateClock)
-        {
-          Util_constructClock(connList[i].pUpdateClock,
-                              BT5_EEG_clockHandler,
-                              EEG_SEND_PARAM_UPDATE_DELAY, 0, true,
-                              (UArg) (connList[i].pParamUpdateEventData));
-        }
-        else
-        {
-            ICall_free(connList[i].pParamUpdateEventData);
-        }
-      }
-      else
-      {
-        status = bleMemAllocError;
-      }
-
-      // Set default PHY to 2M
-      connList[i].currPhy = HCI_PHY_2_MBPS;
 
       break;
     }
@@ -1803,41 +1653,12 @@ static uint8_t BT5_EEG_clearConnListEntry(uint16_t connHandle)
     if((connIndex == i) || (connHandle == CONNHANDLE_ALL))
     {
       connList[i].connHandle = CONNHANDLE_INVALID;
-      connList[i].currPhy = 0;
-      connList[i].phyCngRq = 0;
-      connList[i].phyRqFailCnt = 0;
-      connList[i].rqPhy = 0;
-      memset(connList[i].rssiArr, 0, EEG_MAX_RSSI_STORE_DEPTH);
-      connList[i].rssiAvg = 0;
-      connList[i].rssiCntr = 0;
-      connList[i].isAutoPHYEnable = FALSE;
     }
   }
 
   return(SUCCESS);
 }
 
-/*********************************************************************
- * @fn      BT5_EEG_clearPendingParamUpdate
- *
- * @brief   clean pending param update request in the paramUpdateList list
- *
- * @param   connHandle - connection handle to clean
- *
- * @return  none
- */
-void BT5_EEG_clearPendingParamUpdate(uint16_t connHandle)
-{
-  List_Elem *curr;
-
-  for (curr = List_head(&paramUpdateList); curr != NULL; curr = List_next(curr)) 
-  {
-    if (((ConnHandleEntry_t *)curr)->connHandle == connHandle)
-    {
-      List_remove(&paramUpdateList, curr);
-    }
-  }
-}
 
 /*********************************************************************
  * @fn      BT5_EEG_removeConn
@@ -1854,417 +1675,12 @@ static uint8_t BT5_EEG_removeConn(uint16_t connHandle)
 
   if(connIndex != MAX_NUM_BLE_CONNS)
   {
-    Clock_Struct* pUpdateClock = connList[connIndex].pUpdateClock;
-
-    if (pUpdateClock != NULL)
-    {
-      // Stop and destruct the RTOS clock if it's still alive
-      if (Util_isActive(pUpdateClock))
-      {
-        Util_stopClock(pUpdateClock);
-      }
-
-      // Destruct the clock object
-      Clock_destruct(pUpdateClock);
-      // Free clock struct
-      ICall_free(pUpdateClock);
-      // Free ParamUpdateEventData
-      ICall_free(connList[connIndex].pParamUpdateEventData);
-    }
-    // Clear pending update requests from paramUpdateList
-    BT5_EEG_clearPendingParamUpdate(connHandle);
-    // Stop Auto PHY Change
-    BT5_EEG_stopAutoPhyChange(connHandle);
     // Clear Connection List Entry
     BT5_EEG_clearConnListEntry(connHandle);
   }
 
   return connIndex;
 }
-
-/*********************************************************************
- * @fn      BT5_EEG_processParamUpdate
- *
- * @brief   Process a parameters update request
- *
- * @return  None
- */
-static void BT5_EEG_processParamUpdate(uint16_t connHandle)
-{
-  gapUpdateLinkParamReq_t req;
-  uint8_t connIndex;
-
-  req.connectionHandle = connHandle;
-  req.connLatency = DEFAULT_DESIRED_SLAVE_LATENCY;
-  req.connTimeout = DEFAULT_DESIRED_CONN_TIMEOUT;
-  req.intervalMin = DEFAULT_DESIRED_MIN_CONN_INTERVAL;
-  req.intervalMax = DEFAULT_DESIRED_MAX_CONN_INTERVAL;
-
-  connIndex = BT5_EEG_getConnIndex(connHandle);
-  if (connIndex >= MAX_NUM_BLE_CONNS)
-  {
-//    Display_printf(dispHandle, EEG_ROW_STATUS_1, 0, "Connection handle is not in the connList !!!");
-    return;
-  }
-
-
-  // Deconstruct the clock object
-  Clock_destruct(connList[connIndex].pUpdateClock);
-  // Free clock struct, only in case it is not NULL
-  if (connList[connIndex].pUpdateClock != NULL)
-  {
-    ICall_free(connList[connIndex].pUpdateClock);
-    connList[connIndex].pUpdateClock = NULL;
-  }
-  // Free ParamUpdateEventData, only in case it is not NULL
-  if (connList[connIndex].pParamUpdateEventData != NULL)
-    ICall_free(connList[connIndex].pParamUpdateEventData);
-
-  // Send parameter update
-  bStatus_t status = GAP_UpdateLinkParamReq(&req);
-
-  // If there is an ongoing update, queue this for when the udpate completes
-  if (status == bleAlreadyInRequestedMode)
-  {
-    ConnHandleEntry_t *connHandleEntry = ICall_malloc(sizeof(ConnHandleEntry_t));
-    if (connHandleEntry)
-    {
-      connHandleEntry->connHandle = connHandle;
-
-      List_put(&paramUpdateList, (List_Elem *)connHandleEntry);
-    }
-  }
-}
-
-/*********************************************************************
- * @fn      BT5_EEG_processCmdCompleteEvt
- *
- * @brief   Process an incoming OSAL HCI Command Complete Event.
- *
- * @param   pMsg - message to process
- *
- * @return  none
- */
-static void BT5_EEG_processCmdCompleteEvt(hciEvt_CmdComplete_t *pMsg)
-{
-  uint8_t status = pMsg->pReturnParam[0];
-
-  //Find which command this command complete is for
-  switch (pMsg->cmdOpcode)
-  {
-    case HCI_READ_RSSI:
-    {
-      int8 rssi = (int8)pMsg->pReturnParam[3];  
-
-      // Display RSSI value, if RSSI is higher than threshold, change to faster PHY
-      if (status == SUCCESS)
-      {
-        uint16_t handle = BUILD_UINT16(pMsg->pReturnParam[1], pMsg->pReturnParam[2]);
-
-        uint8_t index = BT5_EEG_getConnIndex(handle);
-        BT5_EEG_ASSERT(index < MAX_NUM_BLE_CONNS);
-
-        if (rssi != LL_RSSI_NOT_AVAILABLE)
-        {
-          connList[index].rssiArr[connList[index].rssiCntr++] = rssi;
-          connList[index].rssiCntr %= EEG_MAX_RSSI_STORE_DEPTH;
-
-          int16_t sum_rssi = 0;
-          for(uint8_t cnt=0; cnt<EEG_MAX_RSSI_STORE_DEPTH; cnt++)
-          {
-            sum_rssi += connList[index].rssiArr[cnt];
-          }
-          connList[index].rssiAvg = (uint32_t)(sum_rssi/EEG_MAX_RSSI_STORE_DEPTH);
-
-          uint8_t phyRq = EEG_PHY_NONE;
-          uint8_t phyRqS = EEG_PHY_NONE;
-          uint8_t phyOpt = LL_PHY_OPT_NONE;
-
-          if(connList[index].phyCngRq == FALSE)
-          {
-            if((connList[index].rssiAvg >= RSSI_2M_THRSHLD) &&
-            (connList[index].currPhy != HCI_PHY_2_MBPS) &&
-                 (connList[index].currPhy != EEG_PHY_NONE))
-            {
-              // try to go to higher data rate
-              phyRqS = phyRq = HCI_PHY_2_MBPS;
-            }
-            else if((connList[index].rssiAvg < RSSI_2M_THRSHLD) &&
-                    (connList[index].rssiAvg >= RSSI_1M_THRSHLD) &&
-                    (connList[index].currPhy != HCI_PHY_1_MBPS) &&
-                    (connList[index].currPhy != EEG_PHY_NONE))
-            {
-              // try to go to legacy regular data rate
-              phyRqS = phyRq = HCI_PHY_1_MBPS;
-            }
-            else if((connList[index].rssiAvg >= RSSI_S2_THRSHLD) &&
-                    (connList[index].rssiAvg < RSSI_1M_THRSHLD) &&
-                    (connList[index].currPhy != EEG_PHY_NONE))
-            {
-              // try to go to lower data rate S=2(500kb/s)
-              phyRqS = HCI_PHY_CODED;
-              phyOpt = LL_PHY_OPT_S2;
-              phyRq = BLE5_CODED_S2_PHY;
-            }
-            else if(connList[index].rssiAvg < RSSI_S2_THRSHLD )
-            {
-              // try to go to lowest data rate S=8(125kb/s)
-              phyRqS = HCI_PHY_CODED;
-              phyOpt = LL_PHY_OPT_S8;
-              phyRq = BLE5_CODED_S8_PHY;
-            }
-            if((phyRq != EEG_PHY_NONE) &&
-               // First check if the request for this phy change is already not honored then don't request for change
-               (((connList[index].rqPhy == phyRq) &&
-                 (connList[index].phyRqFailCnt < 2)) ||
-                 (connList[index].rqPhy != phyRq)))
-            {
-              //Initiate PHY change based on RSSI
-              BT5_EEG_setPhy(connList[index].connHandle, 0,
-                                      phyRqS, phyRqS, phyOpt);
-              connList[index].phyCngRq = TRUE;
-
-              // If it a request for different phy than failed request, reset the count
-              if(connList[index].rqPhy != phyRq)
-              {
-                // then reset the request phy counter and requested phy
-                connList[index].phyRqFailCnt = 0;
-              }
-
-              if(phyOpt == LL_PHY_OPT_NONE)
-              {
-                connList[index].rqPhy = phyRq;
-              }
-              else if(phyOpt == LL_PHY_OPT_S2)
-              {
-                connList[index].rqPhy = BLE5_CODED_S2_PHY;
-              }
-              else
-              {
-                connList[index].rqPhy = BLE5_CODED_S8_PHY;
-              }
-
-            } // end of if ((phyRq != EEG_PHY_NONE) && ...
-          } // end of if (connList[index].phyCngRq == FALSE)
-        } // end of if (rssi != LL_RSSI_NOT_AVAILABLE)
-
-//        Display_printf(dispHandle, EEG_ROW_RSSI, 0,
-//                       "RSSI:%d dBm, AVG RSSI:%d dBm",
-//                       (uint32_t)(rssi),
-//                       connList[index].rssiAvg);
-
-      } // end of if (status == SUCCESS)
-      break;
-    }
-
-    case HCI_LE_READ_PHY:
-    {
-      if (status == SUCCESS)
-      {
-//        Display_printf(dispHandle, EEG_ROW_RSSI + 2, 0, "RXPh: %d, TXPh: %d",
-//                       pMsg->pReturnParam[3], pMsg->pReturnParam[4]);
-      }
-      break;
-    }
-
-    default:
-      break;
-  } // end of switch (pMsg->cmdOpcode)
-}
-
-/*********************************************************************
-* @fn      BT5_EEG_initPHYRSSIArray
-*
-* @brief   Initializes the array of structure/s to store data related
-*          RSSI based auto PHy change
-*
-* @param   connHandle - the connection handle
-*
-* @param   addr - pointer to device address
-*
-* @return  index of connection handle
-*/
-static void BT5_EEG_initPHYRSSIArray(void)
-{
-  //Initialize array to store connection handle and RSSI values
-  memset(connList, 0, sizeof(connList));
-  for (uint8_t index = 0; index < MAX_NUM_BLE_CONNS; index++)
-  {
-    connList[index].connHandle = EEG_INVALID_HANDLE;
-  }
-}
-/*********************************************************************
- * @fn      BT5_EEG_startAutoPhyChange
- *
- * @brief   Start periodic RSSI reads on a link.
- *
- * @param   connHandle - connection handle of link
- * @param   devAddr - device address
- *
- * @return  SUCCESS: Terminate started
- *          bleIncorrectMode: No link
- *          bleNoResources: No resources
- */
-static status_t BT5_EEG_startAutoPhyChange(uint16_t connHandle)
-{
-  status_t status = FAILURE;
-
-  // Get connection index from handle
-  uint8_t connIndex = BT5_EEG_getConnIndex(connHandle);
-  BT5_EEG_ASSERT(connIndex < MAX_NUM_BLE_CONNS);
-
-  // Start Connection Event notice for RSSI calculation
-  status = Gap_RegisterConnEventCb(BT5_EEG_connEvtCB, GAP_CB_REGISTER, connHandle);
-
-  // Flag in connection info if successful
-  if (status == SUCCESS)
-  {
-    connList[connIndex].isAutoPHYEnable = TRUE;
-  }
-
-  return status;
-}
-
-/*********************************************************************
- * @fn      BT5_EEG_stopAutoPhyChange
- *
- * @brief   Cancel periodic RSSI reads on a link.
- *
- * @param   connHandle - connection handle of link
- *
- * @return  SUCCESS: Operation successful
- *          bleIncorrectMode: No link
- */
-static status_t BT5_EEG_stopAutoPhyChange(uint16_t connHandle)
-{
-  // Get connection index from handle
-  uint8_t connIndex = BT5_EEG_getConnIndex(connHandle);
-  BT5_EEG_ASSERT(connIndex < MAX_NUM_BLE_CONNS);
-
-  // Stop connection event notice
-  Gap_RegisterConnEventCb(NULL, GAP_CB_UNREGISTER, connHandle);
-
-  // Also update the phychange request status for active RSSI tracking connection
-  connList[connIndex].phyCngRq = FALSE;
-  connList[connIndex].isAutoPHYEnable = FALSE;
-
-  return SUCCESS;
-}
-
-/*********************************************************************
- * @fn      BT5_EEG_setPhy
- *
- * @brief   Call the HCI set phy API and and add the handle to a
- *          list to match it to an incoming command status event
- */
-static status_t BT5_EEG_setPhy(uint16_t connHandle, uint8_t allPhys,
-                                        uint8_t txPhy, uint8_t rxPhy,
-                                        uint16_t phyOpts)
-{
-  // Allocate list entry to store handle for command status
-  ConnHandleEntry_t *connHandleEntry = ICall_malloc(sizeof(ConnHandleEntry_t));
-
-  if (connHandleEntry)
-  {
-    connHandleEntry->connHandle = connHandle;
-
-    // Add entry to the phy command status list
-    List_put(&setPhyCommStatList, (List_Elem *)connHandleEntry);
-
-    // Send PHY Update
-    HCI_LE_SetPhyCmd(connHandle, allPhys, txPhy, rxPhy, phyOpts);
-  }
-
-  return SUCCESS;
-}
-
-/*********************************************************************
-* @fn      BT5_EEG_updatePHYStat
-*
-* @brief   Update the auto phy update state machine
-*
-* @param   connHandle - the connection handle
-*
-* @return  None
-*/
-static void BT5_EEG_updatePHYStat(uint16_t eventCode, uint8_t *pMsg)
-{
-  uint8_t connIndex;
-
-  switch (eventCode)
-  {
-    case HCI_LE_SET_PHY:
-    {
-      // Get connection handle from list
-      ConnHandleEntry_t *connHandleEntry =
-                           (ConnHandleEntry_t *)List_get(&setPhyCommStatList);
-
-      if (connHandleEntry)
-      {
-        // Get index from connection handle
-        connIndex = BT5_EEG_getConnIndex(connHandleEntry->connHandle);
-
-        ICall_free(connHandleEntry);
-
-        // Is this connection still valid?
-        if (connIndex < MAX_NUM_BLE_CONNS)
-        {
-          hciEvt_CommandStatus_t *pMyMsg = (hciEvt_CommandStatus_t *)pMsg;
-
-          if (pMyMsg->cmdStatus == HCI_ERROR_CODE_UNSUPPORTED_REMOTE_FEATURE)
-          {
-            // Update the phychange request status for active RSSI tracking connection
-            connList[connIndex].phyCngRq = FALSE;
-            connList[connIndex].phyRqFailCnt++;
-          }
-        }
-      }
-      break;
-    }
-
-    // LE Event - a Phy update has completed or failed
-    case HCI_BLE_PHY_UPDATE_COMPLETE_EVENT:
-    {
-      hciEvt_BLEPhyUpdateComplete_t *pPUC =
-                                     (hciEvt_BLEPhyUpdateComplete_t*) pMsg;
-
-      if(pPUC)
-      {
-        // Get index from connection handle
-        connIndex = BT5_EEG_getConnIndex(pPUC->connHandle);
-
-        // Is this connection still valid?
-        if (connIndex < MAX_NUM_BLE_CONNS)
-        {
-          // Update the phychange request status for active RSSI tracking connection
-          connList[connIndex].phyCngRq = FALSE;
-
-          if (pPUC->status == SUCCESS)
-          {
-            connList[connIndex].currPhy = pPUC->rxPhy;
-          }
-          if(pPUC->rxPhy != connList[connIndex].rqPhy)
-          {
-            connList[connIndex].phyRqFailCnt++;
-          }
-          else
-          {
-            // Reset the request phy counter and requested phy
-            connList[connIndex].phyRqFailCnt = 0;
-            connList[connIndex].rqPhy = 0;
-          }
-        }
-      }
-
-      break;
-    }
-
-    default:
-      break;
-  } // end of switch (eventCode)
-}
-
-
 
 #ifdef PTM_MODE
 /*********************************************************************

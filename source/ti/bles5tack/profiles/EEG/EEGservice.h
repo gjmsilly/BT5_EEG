@@ -65,7 +65,7 @@ extern "C"
 // Battery level Characteristic defines
 #define BATTERY_LEVEL_ID         		     0
 #define BATTERY_LEVEL_UUID		             0xFFF1
-#define EEG_BATTERY_LEVEL_LEN         	     5		// MAX Length of Characteristic in bytes
+#define EEG_BATTERY_LEVEL_LEN         	     168		// MAX Length of Characteristic in bytes
 #define EEG_BATTERY_LEVEL_LEN_MIN            1       // MIN Length of Characteristic in bytes
 
 // ADS1299 COMMAND Characteristic defines

@@ -57,12 +57,18 @@ extern "C"
  * INCLUDES
  */
 #include <xdc/runtime/System.h>
+#include <ti/drivers/PIN.h>
+#include <ti/drivers/pin/PINCC26xx.h>
+#include <driverlib/udma.h>
 #include "bq25895.h"
 #include "ads1299.h"
 
 /*********************************************************************
 *  EXTERNAL VARIABLES
 */
+/* buffer for EEG data */
+extern uint8_t         Buffer1[BufferSize];
+extern uint8_t         Buffer2[BufferSize];
 
 /*********************************************************************
  * CONSTANTS

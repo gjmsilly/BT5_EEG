@@ -8,61 +8,121 @@
  * @copyright (c) 2020 gjmsilly
  *
  */
-
-#include <ads1299.h>
-#include <xdc/runtime/System.h>
+/*********************************************************************
+ * INCLUDES
+ */
 #include <ti/drivers/dpl/HwiP.h>
 #include <ti/drivers/SPI.h>
-#include <ti/drivers/spi/SPICC26XXDMA.h>
+#include <driverlib/ssi.h>
+#include <driverlib/ioc.h>
+#include <driverlib/sys_ctrl.h>
+#include <driverlib/udma.h>
 
+#include <ads1299.h>
+
+/*********************************************************************
+ * GLOBAL VARIABLES
+ */
+
+/* Buffer for EEG data */
+uint8_t                            Buffer1[BufferSize];
+uint8_t                            Buffer2[BufferSize];
+
+/* The control table used by the uDMA controller, primary and alternate for 31 channels */
+tDMAControlTable                   DMAControlTable[64] __attribute__ ((aligned (1024)));
 
 /*********************************************************************
  * LOCAL VARIABLES
  */
+/* variables for SPI  */
+uint8_t         DummyByte = 0x00;
 
-uint8_t         ResultByte = 0;
-uint8_t         ResultBuffer[27];
-uint8_t         DummyByte = 0xaa;
-SPI_Handle      spi;
-SPI_Transaction spiTransaction;
-
-/*
- *  ======== ADS1299 init ========
+/*********************************************************************
+ * @fn      ADS1299_init
  *
+ * @brief   initial the SPI module and DReady interrupts
  */
 void ADS1299_init()
 {
-    SPI_Params      spiParams;
 
-    /* Initialize the SPI1 module
-     * Note: ads1299 use Motorola SPI Frame Format With SPO = 0 and SPH = 1 that is SPI_POL0_PHA1
-     *       default value: SPI_master/blocking mode */
-    SPI_init();
+    // ******************************************************************
+    // Hardware initialization
+    // ******************************************************************
+    unsigned int    key;
 
-    SPI_Params_init(&spiParams);     // Initialize SPI parameters
-    spiParams.frameFormat = SPI_POL0_PHA1;
-    spiParams.bitRate  = 12000000;  // 12MHz
-    spiParams.dataSize = 8;         // 8bit per frame
+    /* Disable interrupts when transfer */
+    key = HwiP_disable();
 
-    spi = SPI_open(Board_SPI1, &spiParams);
-    if (spi == NULL)
-    {
-        while (1);  // SPI_open() failed
-    }
+    /* power up and enable clock for SPI. */
+    PRCMPeripheralRunEnable(PRCM_PERIPH_SSI1);             // SSI1
+    PRCMPeripheralSleepEnable(PRCM_PERIPH_SSI1);
+    PRCMPeripheralDeepSleepEnable(PRCM_PERIPH_SSI1);
+    PRCMLoadSet();
+    while(!PRCMLoadGet());
 
+    HwiP_restore(key);
+
+    /* Configure IOs for SSI1 */
+    IOCPinTypeSsiMaster( SSI1_BASE,                                 \
+                         CC2640R2F_EEG_SPI1_MISO,                   \
+                         CC2640R2F_EEG_SPI1_MOSI,                   \
+                         CC2640R2F_EEG_SPI1_CSN,                    \
+                         CC2640R2F_EEG_SPI1_CLK);
+
+    /* Configure SSI1 */
+    //disable operation of the SSI to make sure the CR1:SSE is cleared
+    SSIDisable(SSI1_BASE);
+
+    // Motorola SPI Frame Format With SPO = 0 and SPH = 1 that is SSI_FRF_MOTO_MODE_1
+    // core clock is 48MHz
+    // bit rate set equation is core clock/((SCR+1)*CPSR.CPSDVSR)) SCR[0-255] CPSR EVEN NUNBER
+    // data size set to 8 (4-16 is okay)
+
+    SSIConfigSetExpClk(SSI1_BASE,            \
+                       SysCtrlClockGet(),    \
+                       SSI_FRF_MOTO_MODE_1,  \
+                       SSI_MODE_MASTER,      \
+                       12000000,             \
+                       8);
+
+    SSIIntDisable(SSI1_BASE,SSI_TXFF | SSI_RXFF | SSI_RXTO | SSI_RXOR);
+
+    /* Configure DMA driver */
+    SPIDMA_init();
+
+    // enable the SPI module
+    SSIEnable(SSI1_BASE);
+
+    /* Initial ads1299 */
     ADS1299_PowerOn(0);
     ADS1299_Reset(0);
     ADS1299_SendCommand(ADS1299_CMD_SDATAC); // Stop Read Data Continuously mode
+    ADS1299_Parameter_Config(ADS1299_ParaGroup_TSIG,1); // test signal mode , sample rate 250Hz ,gain x2
 }
 
-/*
- *  ======== WaitUs ========
+/*********************************************************************
+ * @fn      WaitUs
+ *
+ * @brief   cpu delay in us
  *
  */
 
 void WaitUs(int iWaitUs)
 {
-    CPUdelay(iWaitUs);
+    // delay 1us means 1*24/7 `= 6
+    CPUdelay(6*iWaitUs);
+}
+
+/*********************************************************************
+ * @fn      WaitMs
+ *
+ * @brief   cpu delay in ms
+ *
+ */
+void WaitMs(int iWaitMs)
+{
+    // delay 1ms means 1000*24/4 `= 4000
+    CPUdelay(8000*iWaitMs);
 }
 
 /****************************************************************/
@@ -85,11 +145,11 @@ void WaitUs(int iWaitUs)
 /****************************************************************/
 void ADS1299_Reset(uint8_t dev)
 {
-	Mod_RESET_L
-	WaitUs(40);
-	Mod_RESET_H
+    Mod_RESET_L
+    WaitUs(40); // at least 2 tCLK
+    Mod_RESET_H
 	Mod_CS_Disable
-	WaitUs(40);
+	WaitUs(40); // at least 18 tCLK
 
 }
 
@@ -114,7 +174,8 @@ void ADS1299_Reset(uint8_t dev)
 void ADS1299_PowerOn(uint8_t dev)
 {
 	Mod_PDWN_H
-	WaitUs(400);
+    Mod_RESET_H
+	WaitMs(400);    // wait for at least tPOR = 128ms
 }
 
 
@@ -145,45 +206,29 @@ void ADS1299_WriteREG (uint8_t dev, uint8_t address, uint8_t value)
     uint8_t         transmitBuffer[3] = {address,0x00,value}; // address / reg number-1 =0x00 / value
     uint8_t         receiveBuffer;
     unsigned int    key;
-    bool            transferOK = 0;
 
-    /* Disable interrupts */
+    /* Disable interrupts when transfer */
     key = HwiP_disable();
 
     Mod_CS_Enable
 
-    spiTransaction.count = 1;               // command 1 reg address
-    spiTransaction.txBuf = transmitBuffer;
-    spiTransaction.rxBuf = NULL;
-    transferOK=SPI_transfer(spi, &spiTransaction);
-    if (!transferOK) {
-        // Error in SPI or transfer already in progress.
-    }else
-        transferOK=0;
-
-    WaitUs(2);                              // wait decode and execute
-    spiTransaction.count = 1;               // command 2 reg number-1
-    spiTransaction.txBuf = (transmitBuffer+1);
-    spiTransaction.rxBuf = NULL;
-    transferOK=SPI_transfer(spi, &spiTransaction);
-    if (!transferOK) {
-        // Error in SPI or transfer already in progress.
-    }else
-        transferOK=0;
-
-    WaitUs(2);
-    spiTransaction.count = 1;               // write to the reg
-    spiTransaction.txBuf = (transmitBuffer+2);
-    spiTransaction.rxBuf = NULL;
-    transferOK=SPI_transfer(spi, &spiTransaction);
-    if (!transferOK) {
-        // Error in SPI or transfer already in progress.
-    }
-
+    SSIDataPut(SSI1_BASE,transmitBuffer[0]);              // command 1
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
+    WaitUs(10);
+    SSIDataPut(SSI1_BASE,transmitBuffer[1]);              // command 2
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
+    WaitUs(10);
+    SSIDataPut(SSI1_BASE,transmitBuffer[2]);             // write value into register
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
+    WaitUs(10);
     Mod_CS_Disable
+
     /* Re-enable interrupts */
     HwiP_restore(key);
-  
+
   
 }
 
@@ -213,43 +258,27 @@ uint8_t ADS1299_ReadREG (uint8_t dev, uint8_t address)
     uint8_t         transmitBuffer[3] = {address,0x00,DummyByte}; // address / reg number-1 =0x00 / DummyByte=0xaa
     uint8_t         receiveBuffer;
     unsigned int    key;
-    bool            transferOK = 0;
 
-    /* Disable interrupts */
+    /* Disable interrupts when transfer*/
     key = HwiP_disable();
 
-	Mod_CS_Enable
+    Mod_CS_Enable
 
-	spiTransaction.count = 1;               // command 1
-    spiTransaction.txBuf = transmitBuffer;
-    spiTransaction.rxBuf = NULL;
-    transferOK=SPI_transfer(spi, &spiTransaction);
-    if (!transferOK) {
-        // Error in SPI or transfer already in progress.
-    }else
-        transferOK=0;
-
-    WaitUs(2);                              // wait decode and execute
-    spiTransaction.count = 1;               // command 2
-    spiTransaction.txBuf = (transmitBuffer+1);
-    spiTransaction.rxBuf = NULL;
-    transferOK=SPI_transfer(spi, &spiTransaction);
-    if (!transferOK) {
-        // Error in SPI or transfer already in progress.
-    }else
-        transferOK=0;
-
-    WaitUs(2);
-    spiTransaction.count = 1;               // get the reg data
-    spiTransaction.txBuf = (transmitBuffer+2);
-    spiTransaction.rxBuf = &receiveBuffer;
-    transferOK=SPI_transfer(spi, &spiTransaction);
-    if (!transferOK) {
-        // Error in SPI or transfer already in progress.
-    }
+    SSIDataPut(SSI1_BASE,transmitBuffer[0]);                  // command 1
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
+    WaitUs(10);
+    SSIDataPut(SSI1_BASE,transmitBuffer[1]);                  // command 2
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
+    WaitUs(10);
+    SSIDataPut(SSI1_BASE,transmitBuffer[2]);
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
 
     Mod_CS_Disable
-	/* Re-enable interrupts */
+
+	/* Re-enable interrupts when transfer*/
     HwiP_restore(key);
 
   return receiveBuffer;
@@ -275,104 +304,29 @@ uint8_t ADS1299_ReadREG (uint8_t dev, uint8_t address)
  *     - None
  */
 /****************************************************************/
-bool ADS1299_SendCommand(uint8_t command)
+void ADS1299_SendCommand(uint8_t command)
 {
     uint8_t         transmitBuffer = command;
+    uint8_t         receiveBuffer;
     unsigned int    key;
-    bool            transferOK = 0;
-
-    spiTransaction.count = 1;
-    spiTransaction.txBuf = &transmitBuffer;
-    spiTransaction.rxBuf = NULL;
 
     /* Disable interrupts */
     key = HwiP_disable();
 
 	Mod_CS_Enable
 
-	WaitUs(4);
-	transferOK = SPI_transfer(spi, &spiTransaction);
-	if (!transferOK) {
-	    // Error in SPI or transfer already in progress.
-	}
+	WaitUs(10);
+    SSIDataPut(SSI1_BASE,transmitBuffer);    // send command
+    while(SSIBusy(SSI1_BASE));
+    receiveBuffer=HWREG(SSI1_BASE + SSI_O_DR);
+    WaitUs(10);
 
 	Mod_CS_Disable
+
 	/* Re-enable interrupts */
     HwiP_restore(key);
 
-	return transferOK;
 }
-
-/****************************************************************/
-/* ADS1299_ReadByte()                                           */
-/** Operation:
- *      - Read ADS1299 output byte
- *
- * Parameters:
- *      - None
- *
- * Return result of byte:
- *
- * Globals modified:
- *     - None
- *
- * Resources used:
- *     - None
- */
-/****************************************************************/
-inline uint8_t ADS1299_ReadByte(void)
-{
-//	ResultByte = 0;
-//	Mod_CS_Enable               // keep CS low
-//    SSIDataPut(SSI1_BASE,0x00); // keep MOSI low
-//    while(SSIBusy(SSI1_BASE));
-//    ResultByte=HWREG(SSI1_BASE + SSI_O_DR);
-//	WaitUs(8);
-//    //Mod_CS_Disable
-//	return ResultByte;
-}
-
-/****************************************************************/
-/* ADS1299_ReadResult()                                         */
-/** Operation:
- *      - Read ADS1299 output data
- *
- * Parameters:
- *      - None
- *
- * Return value:
- *
- * Globals modified:
- *     - None
- *
- * Resources used:
- *     - None
- */
-/****************************************************************/
-/*void ADS1299_ReadResult(uint8_t *result)
-//{
-	uint8_t i;
-    Mod_CS_Enable
-
-	//DMA test
-//	ADS1299_ReadResult_DMA((uint32_t)result, 27);
-	
-//	while(!LL_DMA_IsActiveFlag_TC3(DMA1));
-	
-	
-//	LL_SPI_DisableDMAReq_TX(SPI2);
-//	LL_SPI_DisableDMAReq_RX(SPI2);
-	
-//	LL_DMA_ClearFlag_TC3(DMA1);
-//	LL_DMA_ClearFlag_TC4(DMA1);
-	
-	//printf("R%d %d %d ",ResultBuffer[3],ResultBuffer[4],ResultBuffer[5]);
-	
-	//WaitUs(4);
-	//Mod_CS_Disable;
-//}
-
-*/
 
 /****************************************************************/
 /* ADS1299_Channel_Config()                                     */
@@ -531,7 +485,7 @@ void ADS1299_Parameter_Config(uint8_t ADS1299_ParaGroup, uint8_t sample)
 	WaitUs(20);
 	ADS1299_WriteREG(0,ADS1299_REG_BIASSENSN,BIASSN.value);
 	WaitUs(20);
-	ADS1299_WriteREG(0,ADS1299_REG_MISC1,MISC1.value);		// SRB1统一参考 0x20
+	ADS1299_WriteREG(0,ADS1299_REG_MISC1,MISC1.value);		// SRB1ͳһ�ο� 0x20
 	WaitUs(20);
 	
 	// configure all the channels
@@ -541,4 +495,120 @@ void ADS1299_Parameter_Config(uint8_t ADS1299_ParaGroup, uint8_t sample)
 		WaitUs(20);
 	}
 		
+}
+
+/*********************************************************************
+ * @fn      SPIDMA_Init
+ *
+ * @brief   initial the DMA module for ads1299
+ */
+void SPIDMA_init()
+{
+
+    unsigned int    key;
+
+    /* Disable interrupts when transfer*/
+    key = HwiP_disable();
+
+    /* power up and enable clock for DMA. */
+    PRCMPeripheralRunEnable(PRCM_PERIPH_UDMA);             // UDMA
+    PRCMPeripheralSleepEnable(PRCM_PERIPH_UDMA);
+    PRCMPeripheralDeepSleepEnable(PRCM_PERIPH_UDMA);
+    PRCMLoadSet();
+    while(!PRCMLoadGet());
+
+    /* Set the base for the channel control table. */
+    uDMAControlBaseSet  (UDMA0_BASE, &DMAControlTable);
+    /* Enable DMA. */
+    uDMAEnable(UDMA0_BASE);
+
+    /* DMA settings for SPI RX */
+    // Put the attributes in a known state for the uDMA SSI1RX channel.  Disable the attr by default
+    uDMAChannelAttributeDisable(UDMA0_BASE,UDMA_CHAN_SSI1_RX,                       \
+                                UDMA_ATTR_ALTSELECT | UDMA_ATTR_USEBURST |          \
+                                UDMA_ATTR_HIGH_PRIORITY |                           \
+                                UDMA_ATTR_REQMASK);
+
+    uDMAChannelAttributeEnable(UDMA0_BASE,UDMA_CHAN_SSI1_RX,UDMA_ATTR_USEBURST);
+
+    // Configure the control parameters for the primary & alternate control structure for SSI1RX
+
+    /* source address - increment is 8-bit
+     * destination address - increment is 8-bit
+     * arbitration size - 4 // fixed at 4
+     * transfer data size - 8 bit
+     */
+    uDMAChannelControlSet   ( UDMA0_BASE,                                            \
+                              UDMA_CHAN_SSI1_RX | UDMA_PRI_SELECT,                   \
+                              UDMA_SIZE_8  | UDMA_SRC_INC_NONE   | UDMA_DST_INC_8|   \
+                              UDMA_ARB_4 | UDMA_NEXT_USEBURST);
+
+    /* DMA settings for SPI TX */
+    // Put the attributes in a known state for the uDMA SSI1RX TX channel.  Disable the attr by default
+    uDMAChannelAttributeDisable(UDMA0_BASE,UDMA_CHAN_SSI1_TX,                       \
+                                UDMA_ATTR_ALTSELECT | UDMA_ATTR_USEBURST |          \
+                                UDMA_ATTR_HIGH_PRIORITY |                           \
+                                UDMA_ATTR_REQMASK);
+
+    uDMAChannelAttributeEnable(UDMA0_BASE,UDMA_CHAN_SSI1_TX,UDMA_ATTR_USEBURST);
+
+    // Configure the control parameters for the primary & alternate control structure for SSI1TX
+
+    /* source address - no increment
+     * destination address - increment is 8-bit
+     * arbitration size - 4  // fixed at 4
+     * transfer data size - 8 bit
+     */
+    uDMAChannelControlSet   ( UDMA0_BASE,                                              \
+                              UDMA_CHAN_SSI1_TX | UDMA_PRI_SELECT,                     \
+                              UDMA_SIZE_8 | UDMA_SRC_INC_NONE | UDMA_DST_INC_NONE|     \
+                              UDMA_ARB_4  | UDMA_NEXT_USEBURST);
+
+    /* Re-enable interrupts */
+    HwiP_restore(key);
+
+    /* enable the spi module for dma */
+    SSIDisable(SSI1_BASE); //disable operation of the SSI to make sure the CR1:SSE is cleared
+    SSIDMAEnable(SSI1_BASE,SSI_DMA_TX | SSI_DMA_RX);
+
+}
+
+/*********************************************************************
+ * @fn      SPIDMA_transfer
+ *
+ * @brief   EEG data transfer by dma
+ */
+void SPIDMA_transfer(uint8_t* BufferNum)
+{
+//    uint32_t status;
+//    status = uDMAIntStatus(UDMA0_BASE);
+//    uDMAIntClear(UDMA0_BASE,status);
+
+    if(!(uDMAChannelIsEnabled (UDMA0_BASE,UDMA_CHAN_SSI1_TX )))
+    {
+    // Set up the transfer parameters for the uDMA SSI1TX channel
+    uDMAChannelTransferSet  ( UDMA0_BASE,                                       \
+                              UDMA_CHAN_SSI1_TX | UDMA_PRI_SELECT,              \
+                              UDMA_MODE_BASIC,                                  \
+                              &DummyByte,                                       \
+                              (void *)(SSI1_BASE + SSI_O_DR),                   \
+                              28); // 28 Byte for one EEG conversion
+
+
+    uDMAChannelEnable( UDMA0_BASE,UDMA_CHAN_SSI1_TX );
+    }
+
+   if(!(uDMAChannelIsEnabled (UDMA0_BASE,UDMA_CHAN_SSI1_RX )))
+    {
+    // Set up the transfer parameters for the uDMA SSI1RX channel
+    uDMAChannelTransferSet  ( UDMA0_BASE,                                       \
+                              UDMA_CHAN_SSI1_RX | UDMA_PRI_SELECT,              \
+                              UDMA_MODE_BASIC,                                  \
+                              (void *)(SSI1_BASE + SSI_O_DR),                   \
+                              BufferNum,                                        \
+                              28);
+
+    uDMAChannelEnable( UDMA0_BASE,UDMA_CHAN_SSI1_RX );
+    }
+
 }

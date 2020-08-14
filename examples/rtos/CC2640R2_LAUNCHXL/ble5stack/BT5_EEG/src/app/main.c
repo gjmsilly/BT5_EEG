@@ -59,7 +59,6 @@
 #include "hal_assert.h"
 #include "bcomdef.h"
 
-#include "ads1299.h"
 #include "BT5_EEG.h"
 #ifdef SHELL_MODE
 #include <shell/shell.h>
@@ -159,9 +158,6 @@ int main()
 
   /* Initialize ICall module */
   ICall_init();
-
-  /* Start tasks of BT5_EEG - Priority 6 */
-  ADS1299_init();
   
   /* Start tasks of external images - Priority 5 */
   ICall_createRemoteTasks();

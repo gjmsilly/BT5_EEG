@@ -31,7 +31,13 @@
 #define TIDC_ERR_TIMER      (-8)
 #define TIDC_ERR_REGS       (-9)
 
+/****************************************************************/
+/* Buffer for EEG data                                          */
+/****************************************************************/
+#define                BufferSize              112
 
+extern uint8_t         Buffer1[BufferSize];
+extern uint8_t         Buffer2[BufferSize];
 
 /****************************************************************/
 /* the following register definitions mirror the version given  */
@@ -545,22 +551,18 @@ typedef struct
 #define Mod_PDWN_L       GPIO_writeDio(Mod_nPDWN,0);
 #define Mod_PDWN_H       GPIO_writeDio(Mod_nPDWN,1);
 
-
 void ADS1299_init(void);
-void ADS1299_creatTask(void);
 void WaitUs(int iWaitUs);
+void WaitMs(int iWaitMs);
 void ADS1299_Reset(uint8_t dev);
 void ADS1299_PowerOn(uint8_t dev);
 void ADS1299_WriteREG(uint8_t dev, uint8_t address, uint8_t value);
 uint8_t ADS1299_ReadREG(uint8_t dev, uint8_t address);
-bool ADS1299_SendCommand( uint8_t command);
-
-void ADS1299_ReadResult(uint8_t *result);
+void ADS1299_SendCommand( uint8_t command);
 void ADS1299_Parameter_Config(uint8_t mode,uint8_t sample);
 void ADS1299_Channel_Config(uint8_t dev, uint8_t channel, TADS1299CHnSET Para);
-uint8_t ADS1299_ReadByte(void);
-void ADS1299_ReadResult_DMA(uint32_t DataHeadAddress, uint8_t DataLength);
-uint8_t ADS1299_Mode_Config(uint8_t);
+void SPIDMA_init();
+void SPIDMA_transfer(uint8_t* BufferNum);
 
 #endif /* __ADS1299_H */
 
